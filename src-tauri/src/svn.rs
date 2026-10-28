@@ -57,9 +57,16 @@ pub fn parse_status_u(status_output: &str) -> (bool, Option<u64>) {
 }
 
 fn run_svn(args: &[&str], cwd: &Path) -> Result<String, SvnError> {
-    let output = Command::new("svn")
-        .args(args)
-        .current_dir(cwd)
+    let mut cmd = Command::new("svn");
+    cmd.args(args).current_dir(cwd);
+    // Windows：避免每次调用 svn 时黑框窗口闪一下
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = cmd
         .output()
         .map_err(|e| SvnError::Command(format!("failed to spawn svn: {e}")))?;
 
