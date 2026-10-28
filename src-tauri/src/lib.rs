@@ -14,8 +14,9 @@ use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State, WindowEvent,
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
+use tauri_plugin_autostart::MacosLauncher;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -33,6 +34,7 @@ pub struct ProjectState {
     pub name: String,
     pub path: String,
     pub group_id: String,
+    pub mute_notify: bool,
     pub local_rev: Option<u64>,
     pub remote_rev: Option<u64>,
     pub status: ProjectStatus,
@@ -77,6 +79,7 @@ impl ProjectState {
             name: p.name.clone(),
             path: p.path.clone(),
             group_id: p.group_id.clone(),
+            mute_notify: p.mute_notify,
             local_rev: None,
             remote_rev: None,
             status: ProjectStatus::Unknown,
@@ -141,8 +144,10 @@ fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState
             // behind 来自 `svn status -u`，不能用全局 HEAD 与本地 Revision 比大小
             if revs.behind {
                 proj.status = ProjectStatus::Behind;
+                let muted = proj.mute_notify;
+                let notify_on = guard.config.notify_enabled;
                 let already = guard.notified_remote.get(id).copied();
-                let should_notify = guard.config.notify_enabled && already != Some(revs.remote);
+                let should_notify = notify_on && !muted && already != Some(revs.remote);
                 if should_notify {
                     guard.notified_remote.insert(id.to_string(), revs.remote);
                     let payload = serde_json::json!({
@@ -320,6 +325,46 @@ fn set_project_group(
 }
 
 #[tauri::command]
+fn set_project_mute(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    mute_notify: bool,
+) -> Result<ProjectState, String> {
+    let out = {
+        let mut guard = state.inner.lock();
+        {
+            let cfg = guard
+                .config
+                .projects
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or_else(|| "project not found".to_string())?;
+            cfg.mute_notify = mute_notify;
+        }
+        {
+            let proj = guard
+                .projects
+                .get_mut(&id)
+                .ok_or_else(|| "project not found".to_string())?;
+            proj.mute_notify = mute_notify;
+        }
+        // 重新开启提醒后允许再次通知当前远端 revision
+        if !mute_notify {
+            guard.notified_remote.remove(&id);
+        }
+        guard
+            .projects
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| "project not found".to_string())?
+    };
+    persist(&state)?;
+    emit_project(&app, &out);
+    Ok(out)
+}
+
+#[tauri::command]
 fn add_project(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -380,12 +425,25 @@ fn remove_project(state: State<'_, AppState>, id: String) -> Result<(), String> 
     persist(&state)
 }
 
+fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| e.to_string())?;
+    } else {
+        manager.disable().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn save_settings(
+    app: AppHandle,
     state: State<'_, AppState>,
     poll_interval_secs: u64,
     notify_enabled: bool,
     pause_when_locked: bool,
+    autostart: bool,
 ) -> Result<(), String> {
     if poll_interval_secs < 10 {
         return Err("poll interval must be >= 10 seconds".into());
@@ -395,8 +453,10 @@ fn save_settings(
         guard.config.poll_interval_secs = poll_interval_secs;
         guard.config.notify_enabled = notify_enabled;
         guard.config.pause_when_locked = pause_when_locked;
+        guard.config.autostart = autostart;
     }
-    persist(&state)
+    persist(&state)?;
+    sync_autostart(&app, autostart)
 }
 
 #[tauri::command]
@@ -462,6 +522,29 @@ fn is_session_locked(state: State<'_, AppState>) -> bool {
     guard.config.pause_when_locked && guard.session_locked
 }
 
+fn show_main_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    // 关闭界面时已销毁 WebView，这里按需重建以降低常驻内存
+    match WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("SVN Monitor")
+        .inner_size(980.0, 720.0)
+        .min_inner_size(720.0, 520.0)
+        .resizable(true)
+        .center()
+        .build()
+    {
+        Ok(w) => {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+        Err(e) => eprintln!("failed to recreate main window: {e}"),
+    }
+}
+
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "打开主窗口", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -472,12 +555,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("SVN Monitor")
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
-            }
+            "show" => show_main_window(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -488,11 +566,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                let app = tray.app_handle();
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+                show_main_window(tray.app_handle());
             }
         })
         .build(app)?;
@@ -507,6 +581,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             get_config,
@@ -516,6 +594,7 @@ pub fn run() {
             rename_group,
             remove_group,
             set_project_group,
+            set_project_mute,
             add_project,
             remove_project,
             save_settings,
@@ -529,6 +608,8 @@ pub fn run() {
             setup_tray(app.handle())?;
             session_lock::start_session_watch(app.handle().clone());
             spawn_poller(app.handle().clone(), state.clone());
+            let autostart = state.inner.lock().config.autostart;
+            let _ = sync_autostart(app.handle(), autostart);
             let app_handle = app.handle().clone();
             let state2 = state.clone();
             thread::spawn(move || {
@@ -539,10 +620,19 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.destroy();
+                }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

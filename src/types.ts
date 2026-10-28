@@ -10,6 +10,7 @@ export interface ProjectState {
   name: string;
   path: string;
   group_id: string;
+  mute_notify: boolean;
   local_rev: number | null;
   remote_rev: number | null;
   status: ProjectStatus;
@@ -21,6 +22,13 @@ export interface AppConfig {
   poll_interval_secs: number;
   notify_enabled: boolean;
   pause_when_locked: boolean;
+  autostart: boolean;
   groups: GroupConfig[];
-  projects: { id: string; name: string; path: string; group_id: string }[];
+  projects: {
+    id: string;
+    name: string;
+    path: string;
+    group_id: string;
+    mute_notify?: boolean;
+  }[];
 }

@@ -13,6 +13,7 @@ export function createMockApi() {
     poll_interval_secs: 60,
     notify_enabled: true,
     pause_when_locked: true,
+    autostart: false,
     groups,
     projects: [],
   };
@@ -23,6 +24,7 @@ export function createMockApi() {
       name: "mobile-trunk",
       path: "C:\\work\\mobile\\trunk",
       group_id: "g-mobile",
+      mute_notify: false,
       local_rev: 18490,
       remote_rev: 18497,
       status: "behind",
@@ -34,6 +36,7 @@ export function createMockApi() {
       name: "tools",
       path: "C:\\work\\tools",
       group_id: UNGROUPED,
+      mute_notify: false,
       local_rev: 220,
       remote_rev: 220,
       status: "up_to_date",
@@ -47,6 +50,7 @@ export function createMockApi() {
     name: p.name,
     path: p.path,
     group_id: p.group_id,
+    mute_notify: p.mute_notify,
   }));
 
   return {
@@ -96,6 +100,16 @@ export function createMockApi() {
           if (cfgP) cfgP.group_id = groupId;
           return found as T;
         }
+        case "set_project_mute": {
+          const id = String(args?.id ?? "");
+          const mute = Boolean(args?.muteNotify);
+          const found = projects.find((p) => p.id === id);
+          if (!found) throw new Error("project not found");
+          found.mute_notify = mute;
+          const cfgP = cfg.projects.find((p) => p.id === id);
+          if (cfgP) cfgP.mute_notify = mute;
+          return found as T;
+        }
         case "add_project": {
           const path = String(args?.path ?? "");
           const groupId = String(args?.groupId ?? UNGROUPED);
@@ -106,6 +120,7 @@ export function createMockApi() {
             name,
             path,
             group_id: groupId,
+            mute_notify: false,
             local_rev: 1,
             remote_rev: 1,
             status: "up_to_date",
@@ -113,7 +128,7 @@ export function createMockApi() {
             last_checked: new Date().toISOString(),
           };
           projects = [...projects, p];
-          cfg.projects.push({ id, name, path, group_id: groupId });
+          cfg.projects.push({ id, name, path, group_id: groupId, mute_notify: false });
           return p as T;
         }
         case "remove_project": {
@@ -126,6 +141,7 @@ export function createMockApi() {
           cfg.poll_interval_secs = Number(args?.pollIntervalSecs ?? cfg.poll_interval_secs);
           cfg.notify_enabled = Boolean(args?.notifyEnabled);
           cfg.pause_when_locked = Boolean(args?.pauseWhenLocked);
+          cfg.autostart = Boolean(args?.autostart);
           return undefined as T;
         }
         case "check_project":

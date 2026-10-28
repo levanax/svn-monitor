@@ -18,6 +18,9 @@ pub struct ProjectConfig {
     pub path: String,
     #[serde(default = "default_ungrouped_id")]
     pub group_id: String,
+    /// 忽略本项目的系统通知（界面仍显示有更新）
+    #[serde(default = "default_false")]
+    pub mute_notify: bool,
 }
 
 fn default_ungrouped_id() -> String {
@@ -28,12 +31,18 @@ fn default_true() -> bool {
     true
 }
 
+fn default_false() -> bool {
+    false
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub poll_interval_secs: u64,
     pub notify_enabled: bool,
     #[serde(default = "default_true")]
     pub pause_when_locked: bool,
+    #[serde(default = "default_false")]
+    pub autostart: bool,
     #[serde(default)]
     pub groups: Vec<GroupConfig>,
     pub projects: Vec<ProjectConfig>,
@@ -45,6 +54,7 @@ impl Default for AppConfig {
             poll_interval_secs: 60,
             notify_enabled: true,
             pause_when_locked: true,
+            autostart: false,
             groups: vec![default_ungrouped_group()],
             projects: Vec::new(),
         }
@@ -109,6 +119,7 @@ pub fn new_project(path: String, name: Option<String>, group_id: Option<String>)
         name: name.unwrap_or_else(|| default_name_for(&p)),
         path,
         group_id: group_id.unwrap_or_else(default_ungrouped_id),
+        mute_notify: false,
     }
 }
 
@@ -134,6 +145,7 @@ mod tests {
             poll_interval_secs: 60,
             notify_enabled: true,
             pause_when_locked: true,
+            autostart: false,
             groups: vec![GroupConfig {
                 id: "g1".into(),
                 name: "A".into(),
@@ -143,6 +155,7 @@ mod tests {
                 name: "x".into(),
                 path: r"C:\x".into(),
                 group_id: "missing".into(),
+                mute_notify: false,
             }],
         };
         let n = normalize(cfg);
@@ -156,6 +169,7 @@ mod tests {
         let cfg: AppConfig = serde_json::from_str(raw).unwrap();
         let n = normalize(cfg);
         assert_eq!(n.projects[0].group_id, UNGROUPED_ID);
+        assert!(!n.projects[0].mute_notify);
         assert!(n.pause_when_locked);
     }
 }

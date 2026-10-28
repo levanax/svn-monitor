@@ -25,7 +25,7 @@ const statusLine = document.querySelector<HTMLParagraphElement>("#status-line")!
 const intervalInput = document.querySelector<HTMLInputElement>("#interval")!;
 const notifyInput = document.querySelector<HTMLInputElement>("#notify-enabled")!;
 const pauseLockedInput = document.querySelector<HTMLInputElement>("#pause-locked")!;
-const defaultGroupSelect = document.querySelector<HTMLSelectElement>("#default-group")!;
+const autostartInput = document.querySelector<HTMLInputElement>("#autostart")!;
 
 const COLLAPSE_KEY = "svn-monitor:collapsed-groups";
 
@@ -75,24 +75,24 @@ function badgeFor(p: ProjectState): { cls: string; text: string } {
   }
 }
 
-function fillGroupSelect(select: HTMLSelectElement, selectedId: string) {
-  select.innerHTML = groups
-    .map(
-      (g) =>
-        `<option value="${escapeAttr(g.id)}" ${g.id === selectedId ? "selected" : ""}>${escapeHtml(g.name)}</option>`,
-    )
-    .join("");
-}
-
-function refreshDefaultGroupOptions() {
-  const cur = defaultGroupSelect.value || "ungrouped";
-  fillGroupSelect(defaultGroupSelect, groups.some((g) => g.id === cur) ? cur : "ungrouped");
+async function pickGroupId(currentId: string): Promise<string | null> {
+  const lines = groups.map((g, i) => `${i + 1}. ${g.name}`).join("\n");
+  const cur = groups.find((g) => g.id === currentId)?.name ?? "";
+  const answer = prompt(`移到分组（输入序号或名称）\n${lines}`, cur);
+  if (answer == null) return null;
+  const trimmed = answer.trim();
+  if (!trimmed) return null;
+  const byIndex = Number(trimmed);
+  if (Number.isInteger(byIndex) && byIndex >= 1 && byIndex <= groups.length) {
+    return groups[byIndex - 1].id;
+  }
+  const byName = groups.find((g) => g.name === trimmed);
+  return byName?.id ?? null;
 }
 
 function render() {
   listEl.innerHTML = "";
   emptyEl.classList.toggle("hidden", projects.length > 0);
-  refreshDefaultGroupOptions();
 
   const byGroup = new Map<string, ProjectState[]>();
   for (const g of groups) byGroup.set(g.id, []);
@@ -171,46 +171,39 @@ function render() {
 
 function renderCard(p: ProjectState): HTMLLIElement {
   const li = document.createElement("li");
-  li.className = `card ${p.status === "behind" ? "behind" : ""} ${p.status === "error" ? "error" : ""}`;
+  li.className = `card ${p.status === "behind" ? "behind" : ""} ${p.status === "error" ? "error" : ""} ${p.mute_notify ? "muted" : ""}`;
   li.dataset.id = p.id;
 
   const badge = badgeFor(p);
   const local = p.local_rev ?? "—";
   const remote = p.remote_rev ?? "—";
   const checked = p.last_checked ? new Date(p.last_checked).toLocaleTimeString() : "—";
+  const muteLabel = p.mute_notify ? "恢复提醒" : "忽略提醒";
 
   li.innerHTML = `
     <div class="card-main">
-      <h2>${escapeHtml(p.name)} <span class="badge ${badge.cls}">${badge.text}</span></h2>
+      <h2>
+        <span class="name">${escapeHtml(p.name)}</span>
+        <span class="badge ${badge.cls}">${badge.text}</span>
+        ${p.mute_notify ? `<span class="badge muted-badge">已忽略提醒</span>` : ""}
+      </h2>
       <p class="path">${escapeHtml(p.path)}</p>
       <div class="meta">
         <span>本地 r${local}</span>
         <span>远端 r${remote}</span>
-        <span>${checked}</span>
+        <span title="上次检查">${escapeHtml(checked)}</span>
         ${p.error ? `<span title="${escapeAttr(p.error)}">${escapeHtml(p.error)}</span>` : ""}
       </div>
     </div>
     <div class="card-actions">
-      <select class="group-select" data-act="move" title="移动到分组" aria-label="移动到分组"></select>
+      <button type="button" class="btn ghost tiny" data-act="mute">${muteLabel}</button>
+      <button type="button" class="btn ghost tiny" data-act="move">移组</button>
       <button type="button" class="btn ghost tiny" data-act="refresh">刷新</button>
       <button type="button" class="btn warn tiny" data-act="update" ${p.status === "behind" ? "" : "disabled"}>Update</button>
       <button type="button" class="btn ghost tiny" data-act="open">打开</button>
       <button type="button" class="btn danger tiny" data-act="remove">移除</button>
     </div>
   `;
-
-  const moveSelect = li.querySelector<HTMLSelectElement>("select[data-act='move']")!;
-  fillGroupSelect(moveSelect, p.group_id);
-  moveSelect.addEventListener("change", async () => {
-    try {
-      await invoke("set_project_group", { id: p.id, groupId: moveSelect.value });
-      await refreshAll();
-      setStatus(`已移动 ${p.name}`);
-    } catch (e) {
-      setStatus(String(e));
-      fillGroupSelect(moveSelect, p.group_id);
-    }
-  });
 
   li.querySelectorAll("button[data-act]").forEach((btn) => {
     btn.addEventListener("click", () => onAction(p, (btn as HTMLButtonElement).dataset.act!));
@@ -246,8 +239,8 @@ async function loadConfig() {
   intervalInput.value = String(cfg.poll_interval_secs);
   notifyInput.checked = cfg.notify_enabled;
   pauseLockedInput.checked = cfg.pause_when_locked;
+  autostartInput.checked = !!cfg.autostart;
   groups = cfg.groups?.length ? cfg.groups : await invoke<GroupConfig[]>("list_groups");
-  refreshDefaultGroupOptions();
 }
 
 async function refreshAll() {
@@ -277,7 +270,18 @@ async function onGroupAction(g: GroupConfig, act: string) {
 
 async function onAction(p: ProjectState, act: string) {
   try {
-    if (act === "refresh") {
+    if (act === "mute") {
+      const next = !p.mute_notify;
+      await invoke("set_project_mute", { id: p.id, muteNotify: next });
+      await refreshAll();
+      setStatus(next ? `已忽略「${p.name}」提醒` : `已恢复「${p.name}」提醒`);
+    } else if (act === "move") {
+      const groupId = await pickGroupId(p.group_id);
+      if (!groupId || groupId === p.group_id) return;
+      await invoke("set_project_group", { id: p.id, groupId });
+      await refreshAll();
+      setStatus(`已移动 ${p.name}`);
+    } else if (act === "refresh") {
       setStatus(`正在检查 ${p.name}…`);
       await invoke("check_project", { id: p.id });
       await refreshAll();
@@ -331,7 +335,7 @@ document.querySelector("#btn-add")!.addEventListener("click", async () => {
     await invoke("add_project", {
       path: selected,
       name: null,
-      groupId: defaultGroupSelect.value || "ungrouped",
+      groupId: "ungrouped",
     });
     await refreshAll();
     setStatus(`已添加：${selected}`);
@@ -364,6 +368,7 @@ async function persistSettings(quiet = false) {
       pollIntervalSecs: secs,
       notifyEnabled: notifyInput.checked,
       pauseWhenLocked: pauseLockedInput.checked,
+      autostart: autostartInput.checked,
     });
     if (notifyInput.checked) await ensureNotifyPermission();
     if (!quiet) setStatus("设置已自动保存");
@@ -383,6 +388,7 @@ intervalInput.addEventListener("change", () => void persistSettings());
 intervalInput.addEventListener("input", () => schedulePersistSettings());
 notifyInput.addEventListener("change", () => void persistSettings());
 pauseLockedInput.addEventListener("change", () => void persistSettings());
+autostartInput.addEventListener("change", () => void persistSettings());
 
 async function boot() {
   await loadConfig();
