@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+test-artifacts/*.webm
+test-artifacts/*.png
+!test-artifacts/.gitkeep
+playwright-report/
+test-results/
+.DS_Store
+*.log

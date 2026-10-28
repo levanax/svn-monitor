@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SVN Monitor</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="top">
+        <div class="brand">
+          <span class="logo" aria-hidden="true"></span>
+          <div>
+            <h1>SVN Monitor</h1>
+            <p class="sub">多工作副本轮询 · 有更新即提醒</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button type="button" id="btn-add-group" class="btn ghost">新建分组</button>
+          <button type="button" id="btn-refresh" class="btn ghost">全部刷新</button>
+          <button type="button" id="btn-add" class="btn primary">添加目录</button>
+        </div>
+      </header>
+
+      <section class="settings" aria-label="轮询设置">
+        <label class="field">
+          <span>间隔(秒)</span>
+          <input type="number" id="interval" min="10" max="3600" step="5" />
+        </label>
+        <label class="check">
+          <input type="checkbox" id="notify-enabled" checked />
+          <span>系统通知</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="pause-locked" checked />
+          <span>锁屏暂停</span>
+        </label>
+        <label class="field">
+          <span>默认分组</span>
+          <select id="default-group"></select>
+        </label>
+        <p id="status-line" class="status-line" role="status"></p>
+      </section>
+
+      <main>
+        <div id="project-list" class="project-list" aria-live="polite"></div>
+        <p id="empty" class="empty hidden">还没有监控目录。点击「添加目录」选择 SVN 工作副本。</p>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
