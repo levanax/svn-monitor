@@ -8,6 +8,8 @@ pub struct SvnCheck {
     pub remote: u64,
     /// 是否对本工作副本有可更新内容（基于 `svn status -u`）
     pub behind: bool,
+    /// 仓库内相对路径，如 `trunk` / `branches/feature-x`（来自 Relative URL 或 URL）
+    pub rel_path: Option<String>,
 }
 
 /// 解码 svn 子进程输出：优先 UTF-8；Windows 中文环境常为系统代码页（GB18030/GBK）。
@@ -45,6 +47,40 @@ pub fn parse_revision(info_output: &str) -> Result<u64, SvnError> {
         }
     }
     Err(SvnError::Parse("Revision field not found".into()))
+}
+
+fn field_after_prefix(info_output: &str, prefix: &str) -> Option<String> {
+    for line in info_output.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix(prefix) {
+            let v = rest.trim();
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 从 `svn info` 得到仓库内相对路径（去掉 `^/`），便于识别 trunk / branches。
+pub fn parse_rel_path(info_output: &str) -> Option<String> {
+    if let Some(rel) = field_after_prefix(info_output, "Relative URL:") {
+        let trimmed = rel.trim_start_matches('^').trim_start_matches('/');
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let url = field_after_prefix(info_output, "URL:")?;
+    let root = field_after_prefix(info_output, "Repository Root:")?;
+    let url = url.trim_end_matches('/');
+    let root = root.trim_end_matches('/');
+    if let Some(rest) = url.strip_prefix(root) {
+        let trimmed = rest.trim_start_matches('/');
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
 }
 
 /// 解析 `svn status -u`：第九列 `*` 表示该路径相对服务器落后；
@@ -246,6 +282,7 @@ pub fn query_revisions(wc: &Path) -> Result<SvnCheck, SvnError> {
     }
     let local_out = run_svn(&["info"], wc)?;
     let local = parse_revision(&local_out)?;
+    let rel_path = parse_rel_path(&local_out);
 
     // -u：对照服务器；不要用 info -r HEAD 的 Revision（那是仓库全局修订，会误报）
     let status_out = run_svn(&["status", "-u"], wc)?;
@@ -262,6 +299,7 @@ pub fn query_revisions(wc: &Path) -> Result<SvnCheck, SvnError> {
         local,
         remote,
         behind,
+        rel_path,
     })
 }
 
@@ -372,6 +410,25 @@ mod tests {
     fn parse_revision_from_info() {
         let sample = "Path: .\nWorking Copy Root Path: C:\\repo\nURL: https://svn.example/trunk\nRelative URL: ^/trunk\nRepository Root: https://svn.example\nRepository UUID: abc\nRevision: 18497\nNode Kind: directory\n";
         assert_eq!(parse_revision(sample).unwrap(), 18497);
+    }
+
+    #[test]
+    fn parse_rel_path_from_relative_url() {
+        let sample = "URL: https://svn.example/proj/branches/feat-a\nRelative URL: ^/branches/feat-a\nRepository Root: https://svn.example/proj\nRevision: 10\n";
+        assert_eq!(
+            parse_rel_path(sample).as_deref(),
+            Some("branches/feat-a")
+        );
+        assert_eq!(
+            parse_rel_path("Relative URL: ^/trunk\nRevision: 1\n").as_deref(),
+            Some("trunk")
+        );
+    }
+
+    #[test]
+    fn parse_rel_path_fallback_url_minus_root() {
+        let sample = "URL: https://svn.example/proj/trunk\nRepository Root: https://svn.example/proj\nRevision: 1\n";
+        assert_eq!(parse_rel_path(sample).as_deref(), Some("trunk"));
     }
 
     #[test]

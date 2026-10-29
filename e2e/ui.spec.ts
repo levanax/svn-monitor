@@ -18,6 +18,11 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Mobile 2" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /未分组/ })).toBeVisible();
   await expect(page.getByText("mobile-trunk", { exact: true })).toBeVisible();
+  await expect(page.locator(".card:has-text('mobile-trunk') .svn-rel")).toHaveText("trunk");
+  await expect(page.locator(".card:has-text('mobile-branch') .svn-rel")).toHaveText(
+    "branches/release-2.1",
+  );
+  await expect(page.locator(".card:has-text('mobile-branch') .svn-path.branch")).toBeVisible();
   await expect(page.getByText("有更新").first()).toBeVisible();
   await expect(page.locator("#pause-locked")).toBeVisible();
   await expect(page.locator("#autostart")).toBeVisible();

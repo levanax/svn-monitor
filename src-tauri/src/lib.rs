@@ -34,6 +34,8 @@ pub struct ProjectState {
     pub id: String,
     pub name: String,
     pub path: String,
+    /// 仓库内相对路径，如 trunk / branches/xxx；检查成功后填充
+    pub svn_rel_path: Option<String>,
     pub group_id: String,
     pub mute_notify: bool,
     pub sort_order: u32,
@@ -80,6 +82,7 @@ impl ProjectState {
             id: p.id.clone(),
             name: p.name.clone(),
             path: p.path.clone(),
+            svn_rel_path: None,
             group_id: p.group_id.clone(),
             mute_notify: p.mute_notify,
             sort_order: p.sort_order,
@@ -229,6 +232,9 @@ fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState
         Ok(revs) => {
             proj.local_rev = Some(revs.local);
             proj.remote_rev = Some(revs.remote);
+            if revs.rel_path.is_some() {
+                proj.svn_rel_path = revs.rel_path;
+            }
             proj.error = None;
             // behind 来自 `svn status -u`，不能用全局 HEAD 与本地 Revision 比大小
             if revs.behind {

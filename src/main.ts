@@ -323,6 +323,30 @@ function renderCard(p: ProjectState): HTMLLIElement {
   const remote = p.remote_rev ?? "—";
   const checked = p.last_checked ? new Date(p.last_checked).toLocaleTimeString() : "—";
   const muteLabel = p.mute_notify ? "恢复提醒" : "忽略提醒";
+  const svnRel = (p.svn_rel_path ?? "").trim();
+  const svnKind =
+    !svnRel ? "" : svnRel === "trunk" || svnRel.startsWith("trunk/")
+      ? "trunk"
+      : svnRel.startsWith("branches/") || svnRel.startsWith("branch/")
+        ? "branch"
+        : svnRel.startsWith("tags/") || svnRel.startsWith("tag/")
+          ? "tag"
+          : "other";
+  const svnKindLabel =
+    svnKind === "trunk"
+      ? "TRUNK"
+      : svnKind === "branch"
+        ? "分支"
+        : svnKind === "tag"
+          ? "TAG"
+          : svnKind
+            ? "SVN"
+            : "";
+  const svnLine = svnRel
+    ? `<p class="svn-path ${svnKind}" title="SVN 仓库路径"><span class="svn-kind">${escapeHtml(
+        svnKindLabel,
+      )}</span><span class="svn-rel">${escapeHtml(svnRel)}</span></p>`
+    : "";
 
   li.innerHTML = `
     <div class="card-drag" title="拖动调整顺序" role="button" tabindex="0" aria-label="拖动调整顺序">
@@ -334,7 +358,8 @@ function renderCard(p: ProjectState): HTMLLIElement {
         <span class="badge ${badge.cls}">${badge.text}</span>
         ${p.mute_notify ? `<span class="badge muted-badge">已忽略提醒</span>` : ""}
       </h2>
-      <p class="path">${escapeHtml(p.path)}</p>
+      ${svnLine}
+      <p class="path" title="本地目录">${escapeHtml(p.path)}</p>
       <div class="meta">
         <span>本地 r${local}</span>
         <span>远端 r${remote}</span>

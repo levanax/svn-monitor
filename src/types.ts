@@ -9,6 +9,8 @@ export interface ProjectState {
   id: string;
   name: string;
   path: string;
+  /** 仓库内相对路径，如 trunk / branches/xxx；检查成功后才有 */
+  svn_rel_path: string | null;
   group_id: string;
   mute_notify: boolean;
   sort_order: number;
