@@ -1,7 +1,6 @@
 /**
- * Feedback loop: Tauri on Windows replaces WebView2 drag-drop when
- * dragDropEnabled is true (default), which breaks in-app HTML5 DnD.
- * Symptom: card reorder works in browser Playwright, fails in the desktop app.
+ * File drops from Explorer need dragDropEnabled=true.
+ * In-app card/column reorder uses pointer events (not HTML5 DnD).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -11,11 +10,11 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const confPath = path.join(root, "src-tauri", "tauri.conf.json");
 const conf = JSON.parse(fs.readFileSync(confPath, "utf8"));
 const wins = conf.app?.windows ?? [];
-const bad = wins.filter((w) => w.dragDropEnabled !== false);
+const bad = wins.filter((w) => w.dragDropEnabled !== true);
 
 if (bad.length) {
   console.error(
-    "RED: set app.windows[].dragDropEnabled=false so HTML5 DnD works in WebView2",
+    "RED: set app.windows[].dragDropEnabled=true so Explorer folder drops work",
   );
   console.error(
     JSON.stringify(
@@ -30,4 +29,4 @@ if (bad.length) {
   process.exit(1);
 }
 
-console.log("GREEN: dragDropEnabled=false (HTML5 in-app DnD enabled for WebView2)");
+console.log("GREEN: dragDropEnabled=true (Explorer → group drop enabled)");

@@ -4,7 +4,8 @@
 
 ## 功能
 
-- 添加 / 移除多个工作副本目录；**Trello 式**分组列布局；组内卡片可拖排序，**分组列可左右拖排序**（分组不再折叠）
+- 添加 / 移除多个工作副本目录（可选多个分组）；可从**资源管理器拖文件夹**进分组列
+- **Trello 式**分组列；组内卡片 / 分组列用拖动手柄排序（分组不再折叠）
 - 定时轮询远端 revision（间隔以**分钟**为单位，默认 5 分钟）
 - **锁屏时自动暂停**轮询（可关）
 - **开机启动**（可关）
@@ -40,7 +41,7 @@ npm run test:dnd-webview
 npm run test:e2e
 ```
 
-Windows 上组内拖排序依赖 `tauri.conf.json` 的 `dragDropEnabled: false`（否则 Tauri 会劫持 WebView2 拖放，HTML5 DnD 失效）。
+Windows 上 `dragDropEnabled: true` 以支持从资源管理器拖入；应用内排序使用指针拖拽，不依赖 HTML5 DnD。
 
 E2E 截图与录像输出到 `test-artifacts/`。
 

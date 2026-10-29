@@ -53,9 +53,22 @@
 
       <main>
         <div id="project-list" class="project-list" aria-live="polite"></div>
-        <p id="empty" class="empty hidden">还没有监控目录。点击「添加目录」选择 SVN 工作副本。</p>
+        <p id="empty" class="empty hidden">还没有监控目录。点击「添加目录」或从资源管理器拖入 SVN 工作副本。</p>
       </main>
     </div>
+
+    <dialog id="group-picker" class="group-picker">
+      <form method="dialog" id="group-picker-form">
+        <h3>选择保存到的分组</h3>
+        <p id="group-picker-hint" class="group-picker-hint"></p>
+        <div id="group-picker-list" class="group-picker-list" role="group" aria-label="分组列表"></div>
+        <div class="group-picker-actions">
+          <button type="submit" value="cancel" class="btn ghost">取消</button>
+          <button type="submit" value="ok" class="btn primary" id="group-picker-ok">确定</button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

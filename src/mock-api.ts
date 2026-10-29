@@ -161,7 +161,14 @@ export function createMockApi() {
         case "add_project": {
           const path = String(args?.path ?? "");
           const groupId = String(args?.groupId ?? UNGROUPED);
-          const id = `demo-${Date.now()}`;
+          if (
+            projects.some(
+              (p) => p.path.toLowerCase() === path.toLowerCase() && p.group_id === groupId,
+            )
+          ) {
+            throw new Error("该路径已在此分组中");
+          }
+          const id = `demo-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
           const name = path.split(/[/\\]/).filter(Boolean).pop() ?? "new";
           const max = projects
             .filter((p) => p.group_id === groupId)

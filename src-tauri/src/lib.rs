@@ -559,13 +559,10 @@ fn add_project(
     let project = config::new_project(path, name, Some(gid), order);
     let snapshot = {
         let mut guard = state.inner.lock();
-        if guard
-            .config
-            .projects
-            .iter()
-            .any(|p| p.path.eq_ignore_ascii_case(&project.path))
-        {
-            return Err("该路径已在监控列表中".into());
+        if guard.config.projects.iter().any(|p| {
+            p.path.eq_ignore_ascii_case(&project.path) && p.group_id == project.group_id
+        }) {
+            return Err("该路径已在此分组中".into());
         }
         guard.config.projects.push(project.clone());
         let ps = ProjectState::from_config(&project);
@@ -722,8 +719,7 @@ fn show_main_window(app: &AppHandle) {
         .min_inner_size(720.0, 520.0)
         .resizable(true)
         .center()
-        // 与 tauri.conf dragDropEnabled=false 一致：否则 Windows 上 HTML5 组内拖排序失效
-        .disable_drag_drop_handler()
+        // dragDropEnabled=true：允许从资源管理器拖文件夹进分组（组内排序改用指针拖拽）
         .build()
     {
         Ok(w) => {

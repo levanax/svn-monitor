@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   isPermissionGranted,
@@ -113,7 +114,6 @@ function render() {
     const block = document.createElement("section");
     block.className = "group-block";
     block.dataset.groupId = g.id;
-    block.draggable = false;
 
     const head = document.createElement("div");
     head.className = "group-head";
@@ -136,19 +136,17 @@ function render() {
         onGroupAction(g, (btn as HTMLButtonElement).dataset.gact!);
       });
     });
-    bindColumnDrag(block, head, g.id);
+    bindColumnPointerDrag(block, head, g.id);
     block.appendChild(head);
 
     const ul = document.createElement("ul");
     ul.className = "group-body";
     ul.dataset.groupId = g.id;
-    bindProjectDropZone(ul, g.id);
 
     if (items.length === 0) {
       const empty = document.createElement("li");
       empty.className = "card card-empty";
-      empty.draggable = false;
-      empty.innerHTML = `<div class="card-main"><p class="path">本组暂无项目</p></div>`;
+      empty.innerHTML = `<div class="card-main"><p class="path">本组暂无项目 · 可从资源管理器拖入</p></div>`;
       ul.appendChild(empty);
     } else {
       for (const p of items) {
@@ -161,148 +159,66 @@ function render() {
   }
 }
 
-let draggingId: string | null = null;
-let draggingGroupId: string | null = null;
-let draggingColumnId: string | null = null;
+/** 指针拖拽（不依赖 HTML5 DnD，以便开启资源管理器文件拖入） */
+type CardPtr = { id: string; groupId: string; el: HTMLLIElement; pointerId: number };
+type ColPtr = { id: string; el: HTMLElement; pointerId: number };
+let cardPtr: CardPtr | null = null;
+let colPtr: ColPtr | null = null;
 
 function clearCardDragTargets(root: ParentNode = document) {
   root.querySelectorAll(".card.drag-target").forEach((el) => el.classList.remove("drag-target"));
 }
 
 function clearColumnDragTargets() {
-  listEl.querySelectorAll(".group-block.column-target").forEach((el) => el.classList.remove("column-target"));
+  listEl.querySelectorAll(".group-block.column-target").forEach((el) => {
+    el.classList.remove("column-target");
+    delete (el as HTMLElement).dataset.dropSide;
+  });
   listEl.classList.remove("column-dragging");
 }
 
-function bindProjectDropZone(ul: HTMLUListElement, groupId: string) {
-  const canDropHere = () => !!draggingId && !draggingColumnId && draggingGroupId === groupId;
-
-  ul.addEventListener("dragover", (ev) => {
-    if (!canDropHere()) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    ul.classList.add("drag-over");
-    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
-
-    const target = (ev.target as HTMLElement).closest("li.card[data-id]") as HTMLLIElement | null;
-    clearCardDragTargets(ul);
-    if (target && target.dataset.id !== draggingId) {
-      target.classList.add("drag-target");
-    }
-  });
-  ul.addEventListener("dragleave", (ev) => {
-    if (!ul.contains(ev.relatedTarget as Node)) {
-      ul.classList.remove("drag-over");
-      clearCardDragTargets(ul);
-    }
-  });
-  ul.addEventListener("drop", async (ev) => {
-    if (draggingColumnId) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    ul.classList.remove("drag-over");
-    clearCardDragTargets(ul);
-    const id = draggingId || ev.dataTransfer?.getData("text/plain") || null;
-    const fromGroup = draggingGroupId;
-    if (!id || !fromGroup || fromGroup !== groupId) return;
-
-    const cards = [...ul.querySelectorAll<HTMLLIElement>("li.card[data-id]")];
-    const target = (ev.target as HTMLElement).closest("li.card[data-id]") as HTMLLIElement | null;
-    let ordered = cards.map((c) => c.dataset.id!).filter(Boolean);
-    ordered = ordered.filter((x) => x !== id);
-    if (target && target.dataset.id && target.dataset.id !== id) {
-      const rect = target.getBoundingClientRect();
-      const before = ev.clientY < rect.top + rect.height / 2;
-      const idx = ordered.indexOf(target.dataset.id);
-      ordered.splice(before ? idx : idx + 1, 0, id);
-    } else {
-      ordered.push(id);
-    }
-    try {
-      await invoke("reorder_projects", { groupId, orderedIds: ordered });
-      await refreshAll();
-      setStatus("已排序");
-    } catch (e) {
-      setStatus(String(e));
-    }
+function clearFileDropTargets() {
+  listEl.querySelectorAll(".group-block.file-drop-target").forEach((el) => {
+    el.classList.remove("file-drop-target");
   });
 }
 
-function bindColumnDrag(block: HTMLElement, head: HTMLElement, groupId: string) {
-  const armColumnDrag = (ev: Event) => {
+function bindColumnPointerDrag(block: HTMLElement, head: HTMLElement, groupId: string) {
+  head.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
     if ((ev.target as HTMLElement).closest("button, .group-tools")) return;
-    block.draggable = true;
-  };
-  head.addEventListener("pointerdown", armColumnDrag);
-  head.addEventListener("mousedown", armColumnDrag);
-  const endGate = () => {
-    if (!draggingColumnId) block.draggable = false;
-  };
-  head.addEventListener("pointerup", endGate);
-  head.addEventListener("mouseup", endGate);
-  head.addEventListener("pointercancel", endGate);
-
-  block.addEventListener("dragstart", (ev) => {
-    // 卡片拖拽也会冒泡到这里；切勿 preventDefault，否则会取消组内排序
-    if (!block.draggable) return;
-    if ((ev.target as HTMLElement).closest(".card, .group-body, .card-drag")) {
-      block.draggable = false;
-      return;
-    }
-    ev.stopPropagation();
-    draggingColumnId = groupId;
-    draggingId = null;
-    draggingGroupId = null;
+    ev.preventDefault();
+    head.setPointerCapture(ev.pointerId);
+    colPtr = { id: groupId, el: block, pointerId: ev.pointerId };
     block.classList.add("column-dragging");
     listEl.classList.add("column-dragging");
-    ev.dataTransfer?.setData("text/plain", `column:${groupId}`);
-    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
   });
-  block.addEventListener("dragend", () => {
-    draggingColumnId = null;
-    block.draggable = false;
-    block.classList.remove("column-dragging");
-    clearColumnDragTargets();
-  });
-}
-
-function bindBoardColumnDropZone() {
-  listEl.addEventListener("dragover", (ev) => {
-    if (!draggingColumnId) return;
-    ev.preventDefault();
-    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+  head.addEventListener("pointermove", (ev) => {
+    if (!colPtr || colPtr.id !== groupId || colPtr.pointerId !== ev.pointerId) return;
     clearColumnDragTargets();
     listEl.classList.add("column-dragging");
-    const target = (ev.target as HTMLElement).closest(".group-block") as HTMLElement | null;
-    if (target && target.dataset.groupId !== draggingColumnId) {
+    const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(".group-block") as HTMLElement | null;
+    if (target && target.dataset.groupId !== groupId) {
       const rect = target.getBoundingClientRect();
       const before = ev.clientX < rect.left + rect.width / 2;
       target.classList.add("column-target");
       target.dataset.dropSide = before ? "before" : "after";
     }
   });
-  listEl.addEventListener("dragleave", (ev) => {
-    if (!listEl.contains(ev.relatedTarget as Node)) clearColumnDragTargets();
-  });
-  listEl.addEventListener("drop", async (ev) => {
-    if (!draggingColumnId) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const movedId = draggingColumnId;
-    const target = (ev.target as HTMLElement).closest(".group-block") as HTMLElement | null;
+  const endColumnDrag = async (ev: PointerEvent) => {
+    if (!colPtr || colPtr.id !== groupId || colPtr.pointerId !== ev.pointerId) return;
+    const movedId = colPtr.id;
+    const target = listEl.querySelector<HTMLElement>(".group-block.column-target");
     const side = target?.dataset.dropSide === "after" ? "after" : "before";
+    colPtr = null;
+    block.classList.remove("column-dragging");
     clearColumnDragTargets();
+    if (!target?.dataset.groupId || target.dataset.groupId === movedId) return;
 
-    // 配置里全部组都要参与排序（含当前隐藏的空「未分组」）
-    let ordered = groups.map((g) => g.id);
-    ordered = ordered.filter((id) => id !== movedId);
-    if (target?.dataset.groupId && target.dataset.groupId !== movedId) {
-      const idx = ordered.indexOf(target.dataset.groupId);
-      if (idx >= 0) ordered.splice(side === "before" ? idx : idx + 1, 0, movedId);
-      else ordered.push(movedId);
-    } else {
-      ordered.push(movedId);
-    }
+    let ordered = groups.map((g) => g.id).filter((id) => id !== movedId);
+    const idx = ordered.indexOf(target.dataset.groupId);
+    if (idx >= 0) ordered.splice(side === "before" ? idx : idx + 1, 0, movedId);
+    else ordered.push(movedId);
     try {
       await invoke("reorder_groups", { orderedIds: ordered });
       await refreshAll();
@@ -310,18 +226,77 @@ function bindBoardColumnDropZone() {
     } catch (e) {
       setStatus(String(e));
     }
+  };
+  head.addEventListener("pointerup", (ev) => void endColumnDrag(ev));
+  head.addEventListener("pointercancel", (ev) => {
+    if (!colPtr || colPtr.id !== groupId || colPtr.pointerId !== ev.pointerId) return;
+    colPtr = null;
+    block.classList.remove("column-dragging");
+    clearColumnDragTargets();
   });
 }
 
-bindBoardColumnDropZone();
+function bindCardPointerDrag(li: HTMLLIElement, handle: HTMLElement, p: ProjectState) {
+  handle.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    handle.setPointerCapture(ev.pointerId);
+    cardPtr = { id: p.id, groupId: p.group_id, el: li, pointerId: ev.pointerId };
+    li.classList.add("dragging");
+  });
+  handle.addEventListener("pointermove", (ev) => {
+    if (!cardPtr || cardPtr.id !== p.id || cardPtr.pointerId !== ev.pointerId) return;
+    const ul = li.parentElement;
+    if (!ul) return;
+    clearCardDragTargets(ul);
+    ul.classList.add("drag-over");
+    const under = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("li.card[data-id]") as HTMLLIElement | null;
+    if (under && under.dataset.id !== p.id && under.dataset.groupId === p.group_id) {
+      under.classList.add("drag-target");
+    }
+  });
+  const endCardDrag = async (ev: PointerEvent) => {
+    if (!cardPtr || cardPtr.id !== p.id || cardPtr.pointerId !== ev.pointerId) return;
+    const ul = li.parentElement as HTMLUListElement | null;
+    const target = ul?.querySelector<HTMLLIElement>("li.card.drag-target") ?? null;
+    const id = cardPtr.id;
+    const groupId = cardPtr.groupId;
+    cardPtr = null;
+    li.classList.remove("dragging");
+    ul?.classList.remove("drag-over");
+    clearCardDragTargets(ul ?? document);
+    if (!ul || !target?.dataset.id || target.dataset.id === id) return;
+
+    let ordered = [...ul.querySelectorAll<HTMLLIElement>("li.card[data-id]")].map((c) => c.dataset.id!).filter(Boolean);
+    ordered = ordered.filter((x) => x !== id);
+    const rect = target.getBoundingClientRect();
+    const before = ev.clientY < rect.top + rect.height / 2;
+    const idx = ordered.indexOf(target.dataset.id);
+    ordered.splice(before ? idx : idx + 1, 0, id);
+    try {
+      await invoke("reorder_projects", { groupId, orderedIds: ordered });
+      await refreshAll();
+      setStatus("已排序");
+    } catch (e) {
+      setStatus(String(e));
+    }
+  };
+  handle.addEventListener("pointerup", (ev) => void endCardDrag(ev));
+  handle.addEventListener("pointercancel", (ev) => {
+    if (!cardPtr || cardPtr.id !== p.id || cardPtr.pointerId !== ev.pointerId) return;
+    cardPtr = null;
+    li.classList.remove("dragging");
+    li.parentElement?.classList.remove("drag-over");
+    clearCardDragTargets();
+  });
+}
 
 function renderCard(p: ProjectState): HTMLLIElement {
   const li = document.createElement("li");
   li.className = `card ${p.status === "behind" ? "behind" : ""} ${p.status === "error" ? "error" : ""} ${p.mute_notify ? "muted" : ""}`;
   li.dataset.id = p.id;
   li.dataset.groupId = p.group_id;
-  // 默认不可拖；仅按住左侧手柄时临时开启，避免误拖与 WebView 丢事件
-  li.draggable = false;
 
   const badge = badgeFor(p);
   const local = p.local_rev ?? "—";
@@ -358,42 +333,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
     </div>
   `;
 
-  const handle = li.querySelector<HTMLElement>(".card-drag")!;
-  // 仅从手柄按下时允许拖；避免整卡误拖（同时听 pointer/mouse，兼容 Playwright）
-  const armCardDrag = () => {
-    li.draggable = true;
-  };
-  handle.addEventListener("pointerdown", armCardDrag);
-  handle.addEventListener("mousedown", armCardDrag);
-  const endDragGate = () => {
-    if (!draggingId) li.draggable = false;
-  };
-  handle.addEventListener("pointerup", endDragGate);
-  handle.addEventListener("mouseup", endDragGate);
-  handle.addEventListener("pointercancel", endDragGate);
-
-  li.addEventListener("dragstart", (ev) => {
-    if (!li.draggable) {
-      ev.preventDefault();
-      return;
-    }
-    draggingId = p.id;
-    draggingGroupId = p.group_id;
-    draggingColumnId = null;
-    li.classList.add("dragging");
-    ev.dataTransfer?.setData("text/plain", p.id);
-    ev.dataTransfer?.setData("text/project-id", p.id);
-    ev.dataTransfer?.setData("text/group-id", p.group_id);
-    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
-  });
-  li.addEventListener("dragend", () => {
-    draggingId = null;
-    draggingGroupId = null;
-    li.draggable = false;
-    li.classList.remove("dragging");
-    clearCardDragTargets();
-    document.querySelectorAll(".group-body.drag-over").forEach((el) => el.classList.remove("drag-over"));
-  });
+  bindCardPointerDrag(li, li.querySelector<HTMLElement>(".card-drag")!, p);
 
   li.querySelectorAll(".card-actions button[data-act]").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
@@ -403,6 +343,133 @@ function renderCard(p: ProjectState): HTMLLIElement {
   });
 
   return li;
+}
+
+const groupPicker = document.querySelector<HTMLDialogElement>("#group-picker")!;
+const groupPickerList = document.querySelector<HTMLDivElement>("#group-picker-list")!;
+const groupPickerHint = document.querySelector<HTMLParagraphElement>("#group-picker-hint")!;
+const groupPickerForm = document.querySelector<HTMLFormElement>("#group-picker-form")!;
+
+function pickGroupsMulti(opts?: {
+  titleHint?: string;
+  preselected?: string[];
+}): Promise<string[] | null> {
+  const pre = new Set(opts?.preselected ?? []);
+  groupPickerHint.textContent = opts?.titleHint ?? "请勾选至少一个分组（可多选；「未分组」默认不勾选）。";
+  groupPickerList.innerHTML = groups
+    .map(
+      (g) => `
+      <label class="group-picker-item">
+        <input type="checkbox" name="group" value="${escapeAttr(g.id)}" ${pre.has(g.id) ? "checked" : ""} />
+        <span>${escapeHtml(g.name)}</span>
+      </label>`,
+    )
+    .join("");
+
+  return new Promise((resolve) => {
+    const onClose = () => {
+      groupPicker.removeEventListener("close", onClose);
+      if (groupPicker.returnValue !== "ok") {
+        resolve(null);
+        return;
+      }
+      const ids = [...groupPickerList.querySelectorAll<HTMLInputElement>('input[name="group"]:checked')].map(
+        (el) => el.value,
+      );
+      resolve(ids.length ? ids : null);
+    };
+    groupPicker.addEventListener("close", onClose);
+    if (typeof groupPicker.showModal === "function") groupPicker.showModal();
+    else {
+      // 无 dialog 时回退
+      onClose();
+    }
+  });
+}
+
+groupPickerForm.addEventListener("submit", (ev) => {
+  const submitter = (ev as SubmitEvent).submitter as HTMLButtonElement | null;
+  if (submitter?.value === "ok") {
+    const n = groupPickerList.querySelectorAll('input[name="group"]:checked').length;
+    if (!n) {
+      ev.preventDefault();
+      setStatus("请至少选择一个分组");
+    }
+  }
+});
+
+async function addPathsToGroups(paths: string[], groupIds: string[]) {
+  let ok = 0;
+  const errors: string[] = [];
+  for (const path of paths) {
+    for (const groupId of groupIds) {
+      try {
+        await invoke("add_project", { path, name: null, groupId });
+        ok += 1;
+      } catch (e) {
+        errors.push(`${path} → ${groups.find((g) => g.id === groupId)?.name ?? groupId}: ${String(e)}`);
+      }
+    }
+  }
+  await refreshAll();
+  if (ok && !errors.length) setStatus(`已添加 ${ok} 项`);
+  else if (ok) setStatus(`已添加 ${ok} 项，部分跳过`);
+  else setStatus(errors[0] ?? "添加失败");
+}
+
+function cssPointFromPhysical(pos: { x: number; y: number }): { x: number; y: number } {
+  const dpr = window.devicePixelRatio || 1;
+  return { x: pos.x / dpr, y: pos.y / dpr };
+}
+
+function groupIdAtCssPoint(x: number, y: number): string | null {
+  const blocks = [...listEl.querySelectorAll<HTMLElement>(".group-block")];
+  for (const block of blocks) {
+    const r = block.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+      return block.dataset.groupId ?? null;
+    }
+  }
+  // 落在看板空白处：按水平位置取最近列
+  let best: { id: string; dist: number } | null = null;
+  for (const block of blocks) {
+    const r = block.getBoundingClientRect();
+    const cx = (r.left + r.right) / 2;
+    const dist = Math.abs(x - cx);
+    if (!best || dist < best.dist) best = { id: block.dataset.groupId!, dist };
+  }
+  return best?.id ?? null;
+}
+
+function highlightFileDropGroup(groupId: string | null) {
+  clearFileDropTargets();
+  if (!groupId) return;
+  listEl.querySelector(`.group-block[data-group-id="${CSS.escape(groupId)}"]`)?.classList.add("file-drop-target");
+}
+
+async function bindExplorerFileDrop() {
+  if (useMock) return;
+  const webview = getCurrentWebview();
+  await webview.onDragDropEvent((event) => {
+    const payload = event.payload;
+    if (payload.type === "leave") {
+      clearFileDropTargets();
+      return;
+    }
+    if (payload.type === "enter" || payload.type === "over") {
+      const { x, y } = cssPointFromPhysical(payload.position);
+      highlightFileDropGroup(groupIdAtCssPoint(x, y));
+      return;
+    }
+    if (payload.type === "drop") {
+      const { x, y } = cssPointFromPhysical(payload.position);
+      const groupId = groupIdAtCssPoint(x, y) ?? "ungrouped";
+      clearFileDropTargets();
+      const paths = payload.paths.filter(Boolean);
+      if (!paths.length) return;
+      void addPathsToGroups(paths, [groupId]);
+    }
+  });
 }
 
 function escapeHtml(s: string): string {
@@ -533,25 +600,28 @@ document.querySelector("#btn-add-group")!.addEventListener("click", async () => 
 
 document.querySelector("#btn-add")!.addEventListener("click", async () => {
   try {
-    let selected: string | null = null;
+    let paths: string[] = [];
     if (useMock) {
-      selected = `C:\\work\\demo-project-${Date.now()}`;
+      paths = [`C:\\work\\demo-project-${Date.now()}`];
     } else {
       const picked = await open({
         directory: true,
-        multiple: false,
-        title: "选择 SVN 工作副本目录",
+        multiple: true,
+        title: "选择 SVN 工作副本目录（可多选）",
       });
-      if (!picked || Array.isArray(picked)) return;
-      selected = picked;
+      if (!picked) return;
+      paths = Array.isArray(picked) ? picked : [picked];
     }
-    await invoke("add_project", {
-      path: selected,
-      name: null,
-      groupId: "ungrouped",
+    if (!paths.length) return;
+    const groupIds = await pickGroupsMulti({
+      titleHint: `将添加 ${paths.length} 个目录，请勾选保存到的分组（可多选，「未分组」默认不选）`,
+      preselected: [],
     });
-    await refreshAll();
-    setStatus("已添加");
+    if (!groupIds?.length) {
+      setStatus("已取消");
+      return;
+    }
+    await addPathsToGroups(paths, groupIds);
   } catch (e) {
     setStatus(String(e));
   }
@@ -616,6 +686,7 @@ async function boot() {
   await loadConfig();
   await refreshAll();
   if (!useMock && notifyInput.checked) await ensureNotifyPermission();
+  await bindExplorerFileDrop();
 
   if (!useMock) {
     sessionLocked = await invoke<boolean>("is_session_locked");

@@ -33,9 +33,16 @@ test("分组展示与紧凑操作", async ({ page }) => {
 
   const mobileBody = page.locator('.group-block[data-group-id="g-mobile"] .group-body');
   const firstBefore = await mobileBody.locator(".card .name").first().textContent();
-  await page
-    .locator('.card:has-text("mobile-branch") .card-drag')
-    .dragTo(page.locator('.card:has-text("mobile-trunk")'));
+  // 指针拖拽（非 HTML5 DnD）
+  const fromHandle = page.locator('.card:has-text("mobile-branch") .card-drag');
+  const toCard = page.locator('.card:has-text("mobile-trunk")');
+  const fromBox = await fromHandle.boundingBox();
+  const toBox = await toCard.boundingBox();
+  expect(fromBox && toBox).toBeTruthy();
+  await page.mouse.move(fromBox!.x + fromBox!.width / 2, fromBox!.y + fromBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + 8, { steps: 12 });
+  await page.mouse.up();
   await expect(page.getByText("已排序")).toBeVisible();
   const firstAfter = await mobileBody.locator(".card .name").first().textContent();
   expect(firstAfter).not.toBe(firstBefore);
@@ -44,11 +51,15 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.locator(".group-toggle")).toHaveCount(0);
 
   await expect(page.locator(".group-block").first()).toHaveAttribute("data-group-id", "ungrouped");
-  await page
-    .locator('.group-block[data-group-id="g-mobile"] .group-head')
-    .dragTo(page.locator('.group-block[data-group-id="ungrouped"] .group-head'), {
-      targetPosition: { x: 8, y: 12 },
-    });
+  const colFrom = page.locator('.group-block[data-group-id="g-mobile"] .group-head');
+  const colTo = page.locator('.group-block[data-group-id="ungrouped"] .group-head');
+  const cf = await colFrom.boundingBox();
+  const ct = await colTo.boundingBox();
+  expect(cf && ct).toBeTruthy();
+  await page.mouse.move(cf!.x + 24, cf!.y + cf!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(ct!.x + 8, ct!.y + ct!.height / 2, { steps: 12 });
+  await page.mouse.up();
   await expect(page.getByText("已调组序")).toBeVisible();
   await expect(page.locator(".group-block").first()).toHaveAttribute("data-group-id", "g-mobile");
 
@@ -72,8 +83,12 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.locator("#interval")).toHaveValue("5");
 
   await page.locator("#btn-add").click();
-  await expect(page.getByText("已添加")).toBeVisible();
-  await expect(page.getByRole("heading", { name: /未分组/ })).toBeVisible();
+  await expect(page.locator("#group-picker")).toBeVisible();
+  await expect(page.locator('#group-picker-list input[value="ungrouped"]')).not.toBeChecked();
+  await page.locator('#group-picker-list input[value="g-mobile"]').check();
+  await page.locator("#group-picker-ok").click();
+  await expect(page.getByText(/已添加/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Mobile/ })).toBeVisible();
 
   await page.locator('.card:has-text("mobile-trunk") button[data-act="mute"]').click();
   await expect(page.getByText("已忽略 mobile-trunk")).toBeVisible();
