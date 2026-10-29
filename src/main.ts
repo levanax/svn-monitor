@@ -54,10 +54,23 @@ function bindSystemThemeListener() {
 let projects: ProjectState[] = [];
 let groups: GroupConfig[] = [];
 let sessionLocked = false;
+let boardEnterPending = true;
+let statusFadeTimer: ReturnType<typeof setTimeout> | null = null;
 
 function setStatus(msg: string) {
-  statusLine.textContent = msg;
-  statusLine.classList.toggle("locked", sessionLocked && pauseLockedInput.checked);
+  const apply = () => {
+    statusLine.textContent = msg;
+    statusLine.classList.toggle("locked", sessionLocked && pauseLockedInput.checked);
+    statusLine.classList.remove("is-updating");
+  };
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduceMotion || !statusLine.textContent) {
+    apply();
+    return;
+  }
+  statusLine.classList.add("is-updating");
+  if (statusFadeTimer) clearTimeout(statusFadeTimer);
+  statusFadeTimer = setTimeout(apply, 90);
 }
 
 function badgeFor(p: ProjectState): { cls: string; text: string } {
@@ -92,6 +105,7 @@ async function pickGroupId(currentId: string): Promise<string | null> {
 
 function render() {
   listEl.innerHTML = "";
+  listEl.classList.toggle("board-enter", boardEnterPending);
   emptyEl.classList.toggle("hidden", projects.length > 0);
 
   const byGroup = new Map<string, ProjectState[]>();
@@ -156,6 +170,12 @@ function render() {
 
     block.appendChild(ul);
     listEl.appendChild(block);
+  }
+
+  if (boardEnterPending) {
+    boardEnterPending = false;
+    // 入场动画播完后去掉 class，避免后续刷新重复闪动
+    window.setTimeout(() => listEl.classList.remove("board-enter"), 700);
   }
 }
 
@@ -681,6 +701,7 @@ themeSelect.addEventListener("change", () => {
 });
 
 async function boot() {
+  const appEl = document.querySelector("#app");
   bindSystemThemeListener();
   applyTheme("system");
   await loadConfig();
@@ -721,6 +742,14 @@ async function boot() {
         ? "锁屏暂停"
         : "就绪",
   );
+
+  // 下一帧再显示，避免首屏闪一下未排版内容
+  requestAnimationFrame(() => {
+    appEl?.classList.add("is-ready");
+  });
 }
 
-boot().catch((e) => setStatus(String(e)));
+boot().catch((e) => {
+  document.querySelector("#app")?.classList.add("is-ready");
+  setStatus(String(e));
+});

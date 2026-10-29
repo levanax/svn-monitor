@@ -20,6 +20,10 @@ html[data-theme="dark"] {
   --glow-a: #1a3328;
   --glow-b: #243028;
   --radius: 0.5rem;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 0.18s;
+  --dur-med: 0.32s;
+  --dur-slow: 0.45s;
   font-family: system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei",
     sans-serif;
   color: var(--text);
@@ -69,6 +73,9 @@ body {
     radial-gradient(700px 300px at 100% 0%, var(--glow-b) 0%, transparent 50%),
     var(--bg0);
   color: var(--text);
+  transition:
+    background-color var(--dur-med) var(--ease-out),
+    color var(--dur-med) var(--ease-out);
 }
 
 body {
@@ -84,6 +91,16 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+#app.is-ready {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
 }
 
 main {
@@ -148,6 +165,9 @@ h1 {
   border-radius: var(--radius);
   margin-bottom: 0.5rem;
   flex: 0 0 auto;
+  transition:
+    background-color var(--dur-med) var(--ease-out),
+    border-color var(--dur-med) var(--ease-out);
 }
 
 .field {
@@ -198,6 +218,11 @@ h1 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color var(--dur-fast) ease, opacity var(--dur-fast) ease;
+}
+
+.status-line.is-updating {
+  opacity: 0.45;
 }
 
 .status-line.locked {
@@ -212,7 +237,21 @@ h1 {
   font-size: 0.9375rem;
   cursor: pointer;
   color: var(--text);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    filter var(--dur-fast) var(--ease-out);
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn:disabled {
@@ -287,6 +326,47 @@ h1 {
   border-radius: var(--radius);
   background: var(--bg1);
   overflow: hidden;
+  transition:
+    background-color var(--dur-med) var(--ease-out),
+    border-color var(--dur-med) var(--ease-out),
+    outline-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-med) var(--ease-out),
+    transform var(--dur-med) var(--ease-out);
+}
+
+.board-enter .group-block {
+  animation: col-enter var(--dur-slow) var(--ease-out) both;
+}
+
+.board-enter .group-block:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.board-enter .group-block:nth-child(2) {
+  animation-delay: 0.07s;
+}
+.board-enter .group-block:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.board-enter .group-block:nth-child(4) {
+  animation-delay: 0.17s;
+}
+.board-enter .group-block:nth-child(5) {
+  animation-delay: 0.22s;
+}
+.board-enter .group-block:nth-child(n + 6) {
+  animation-delay: 0.27s;
+}
+
+@keyframes col-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .group-head {
@@ -348,10 +428,41 @@ h1 {
   max-width: min(36rem, 94vw);
   width: 100%;
   max-height: min(90vh, 48rem);
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition:
+    opacity var(--dur-med) var(--ease-out),
+    transform var(--dur-med) var(--ease-out),
+    overlay var(--dur-med) allow-discrete,
+    display var(--dur-med) allow-discrete;
+}
+
+.group-picker[open] {
+  opacity: 1;
+  transform: none;
+}
+
+@starting-style {
+  .group-picker[open] {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
 }
 
 .group-picker::backdrop {
   background: color-mix(in srgb, #000 45%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-med) var(--ease-out);
+}
+
+.group-picker[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .group-picker[open]::backdrop {
+    opacity: 0;
+  }
 }
 
 .group-picker form {
@@ -479,6 +590,40 @@ h1 {
   border-radius: var(--radius);
   background: var(--bg2);
   cursor: default;
+  transition:
+    background var(--dur-med) var(--ease-out),
+    border-color var(--dur-med) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.board-enter .card {
+  animation: card-enter 0.38s var(--ease-out) both;
+}
+
+.board-enter .card:nth-child(1) {
+  animation-delay: 0.08s;
+}
+.board-enter .card:nth-child(2) {
+  animation-delay: 0.14s;
+}
+.board-enter .card:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.board-enter .card:nth-child(n + 4) {
+  animation-delay: 0.24s;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .card.dragging {
@@ -572,8 +717,30 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card.behind {
+  .card.behind,
+  .board-enter .group-block,
+  .board-enter .card {
     animation: none;
+  }
+
+  #app,
+  #app.is-ready,
+  .btn,
+  .btn:hover:not(:disabled),
+  .card,
+  .group-block,
+  .group-picker,
+  .group-picker::backdrop,
+  .status-line,
+  html,
+  body,
+  .settings {
+    transition: none !important;
+    transform: none !important;
+  }
+
+  #app {
+    opacity: 1;
   }
 }
 
