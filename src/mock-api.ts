@@ -222,10 +222,13 @@ export function createMockApi() {
         }
         case "check_all":
         case "open_project_folder":
+        case "open_in_cursor":
         case "open_tortoise_log":
           return undefined as T;
         case "is_session_locked":
           return false as T;
+        case "notify_ui_ready":
+          return undefined as T;
         default:
           throw new Error(`mock: unknown command ${cmd}`);
       }

@@ -693,6 +693,70 @@ fn open_project_folder(app: AppHandle, state: State<'_, AppState>, id: String) -
         .map_err(|e| e.to_string())
 }
 
+fn find_cursor_cli() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut cmd = std::process::Command::new("where");
+        cmd.arg("cursor.cmd").creation_flags(CREATE_NO_WINDOW);
+        if let Ok(out) = cmd.output() {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout);
+                if let Some(first) = text.lines().next().map(str::trim).filter(|s| !s.is_empty()) {
+                    let p = PathBuf::from(first);
+                    if p.is_file() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut candidates = Vec::new();
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        let root = PathBuf::from(pf).join("cursor");
+        candidates.push(root.join(r"resources\app\bin\cursor.cmd"));
+        candidates.push(root.join("Cursor.exe"));
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let root = PathBuf::from(local).join(r"Programs\cursor");
+        candidates.push(root.join(r"resources\app\bin\cursor.cmd"));
+        candidates.push(root.join("Cursor.exe"));
+    }
+    candidates.push(PathBuf::from(r"C:\Program Files\cursor\resources\app\bin\cursor.cmd"));
+    candidates.push(PathBuf::from(r"C:\Program Files\cursor\Cursor.exe"));
+
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+#[tauri::command]
+fn open_in_cursor(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let path = {
+        let guard = state.inner.lock();
+        guard
+            .projects
+            .get(&id)
+            .map(|p| p.path.clone())
+            .ok_or_else(|| "project not found".to_string())?
+    };
+    let cursor = find_cursor_cli().ok_or_else(|| {
+        "未找到 Cursor。请确认已安装，并把 cursor 加入 PATH（Cursor → Command Palette → Shell Command: Install）。"
+            .to_string()
+    })?;
+    let mut cmd = std::process::Command::new(&cursor);
+    cmd.arg(&path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("启动 Cursor 失败: {e}"))
+}
+
 #[tauri::command]
 fn open_tortoise_log(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let path = {
@@ -712,10 +776,48 @@ fn is_session_locked(state: State<'_, AppState>) -> bool {
     guard.config.pause_when_locked && guard.session_locked
 }
 
+/// Windows：关闭后重建 WebView 时，系统偶发把光标卡在 IDC_APPSTARTING（loading）。
+/// 强制切回箭头，并用 SetCursorPos 触发 WM_SETCURSOR 刷新。
+#[cfg(windows)]
+fn reset_busy_cursor() {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetCursorPos, LoadCursorW, SetCursor, SetCursorPos, IDC_ARROW,
+    };
+    unsafe {
+        if let Ok(arrow) = LoadCursorW(None, IDC_ARROW) {
+            let _ = SetCursor(Some(arrow));
+        }
+        let mut pt = POINT::default();
+        if GetCursorPos(&mut pt).is_ok() {
+            let _ = SetCursorPos(pt.x, pt.y);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn reset_busy_cursor() {}
+
+fn schedule_cursor_reset() {
+    thread::spawn(|| {
+        for ms in [50u64, 200, 600, 1200] {
+            thread::sleep(Duration::from_millis(ms));
+            reset_busy_cursor();
+        }
+    });
+}
+
+#[tauri::command]
+fn notify_ui_ready() {
+    reset_busy_cursor();
+    schedule_cursor_reset();
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
+        reset_busy_cursor();
         return;
     }
     // 关闭界面时已销毁 WebView，这里按需重建以降低常驻内存
@@ -731,6 +833,9 @@ fn show_main_window(app: &AppHandle) {
         Ok(w) => {
             let _ = w.show();
             let _ = w.set_focus();
+            reset_busy_cursor();
+            // WebView 导航完成前系统可能再次设成 loading，延迟再清几次
+            schedule_cursor_reset();
         }
         Err(e) => eprintln!("failed to recreate main window: {e}"),
     }
@@ -795,8 +900,10 @@ pub fn run() {
             check_all,
             update_project,
             open_project_folder,
+            open_in_cursor,
             open_tortoise_log,
             is_session_locked,
+            notify_ui_ready,
         ])
         .setup(move |app| {
             setup_tray(app.handle())?;
@@ -810,14 +917,21 @@ pub fn run() {
                 thread::sleep(Duration::from_secs(2));
                 check_all_inner(&app_handle, &state2);
             });
+            reset_busy_cursor();
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
-                    api.prevent_close();
-                    let _ = window.destroy();
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    if window.label() == "main" {
+                        api.prevent_close();
+                        let _ = window.destroy();
+                    }
                 }
+                WindowEvent::Focused(true) if window.label() == "main" => {
+                    reset_busy_cursor();
+                }
+                _ => {}
             }
         })
         .build(tauri::generate_context!())

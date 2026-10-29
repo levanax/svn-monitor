@@ -83,6 +83,7 @@ body {
   padding: 0.65rem 0.75rem 0.55rem;
   font-size: 1rem;
   overflow: hidden;
+  cursor: default;
 }
 
 #app {
@@ -553,9 +554,14 @@ h1 {
 
 .group-tools {
   display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  flex: 0 0 auto;
   margin-left: auto;
+}
+
+.group-tools .more-wrap {
+  margin: 0;
 }
 
 .group-body[hidden] {
@@ -771,14 +777,24 @@ h1 {
   gap: 0.25rem;
 }
 
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
 .card-main h2 {
   margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 1rem;
   font-weight: 400;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
+  padding-right: 0.15rem;
 }
 
 .card-main h2 .name {
@@ -955,6 +971,89 @@ html[data-theme="light"] .svn-path.tag .svn-rel {
   flex: 0 0 auto;
   padding: 0.2rem 0.45rem;
   font-size: 0.8125rem;
+}
+
+.more-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  margin: -0.15rem -0.1rem 0 0;
+}
+
+.more-toggle {
+  appearance: none;
+  width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.more-toggle:hover,
+.more-wrap.open .more-toggle {
+  color: var(--text);
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+  border-color: var(--line);
+}
+
+.more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.2rem);
+  z-index: 30;
+  min-width: 8rem;
+  padding: 0.25rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--bg1);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 30%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.more-menu[hidden] {
+  display: none !important;
+}
+
+.more-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.more-item:hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg2));
+}
+
+.more-item.danger {
+  color: var(--danger-text);
+}
+
+.more-item.danger:hover {
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg2));
 }
 
 .empty {

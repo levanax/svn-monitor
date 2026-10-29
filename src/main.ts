@@ -139,15 +139,36 @@ function render() {
         ${
           g.id === "ungrouped"
             ? ""
-            : `<button type="button" class="btn ghost tiny" data-gact="rename">重命名</button>
-               <button type="button" class="btn danger tiny" data-gact="remove">删除组</button>`
+            : `<div class="more-wrap">
+                <button type="button" class="more-toggle" aria-label="分组操作" aria-haspopup="menu" aria-expanded="false" title="分组操作">⋯</button>
+                <div class="more-menu" role="menu" hidden>
+                  <button type="button" class="more-item" role="menuitem" data-gact="rename">重命名</button>
+                  <button type="button" class="more-item danger" role="menuitem" data-gact="remove">删除分组</button>
+                </div>
+              </div>`
         }
       </div>
     `;
-    head.querySelectorAll("button[data-gact]").forEach((btn) => {
+    const moreWrap = head.querySelector<HTMLElement>(".more-wrap");
+    const moreToggle = head.querySelector<HTMLButtonElement>(".more-toggle");
+    const moreMenu = head.querySelector<HTMLElement>(".more-menu");
+    if (moreWrap && moreToggle && moreMenu) {
+      moreToggle.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const willOpen = moreMenu.hasAttribute("hidden");
+        closeAllMoreMenus();
+        if (willOpen) {
+          moreMenu.removeAttribute("hidden");
+          moreWrap.classList.add("open");
+          moreToggle.setAttribute("aria-expanded", "true");
+        }
+      });
+    }
+    head.querySelectorAll<HTMLButtonElement>("button[data-gact]").forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        onGroupAction(g, (btn as HTMLButtonElement).dataset.gact!);
+        closeAllMoreMenus();
+        void onGroupAction(g, btn.dataset.gact!);
       });
     });
     bindColumnPointerDrag(block, head, g.id);
@@ -348,16 +369,32 @@ function renderCard(p: ProjectState): HTMLLIElement {
       )}</span><span class="svn-rel">${escapeHtml(svnRel)}</span></p>`
     : "";
 
+  const updateBtn =
+    p.status === "behind"
+      ? `<button type="button" class="btn warn tiny" data-act="update" title="用 TortoiseSVN 更新">更新</button>`
+      : "";
+
   li.innerHTML = `
     <div class="card-drag" title="拖动调整顺序" role="button" tabindex="0" aria-label="拖动调整顺序">
       <span class="grip" aria-hidden="true"></span>
     </div>
     <div class="card-main">
-      <h2>
-        <span class="name">${escapeHtml(p.name)}</span>
-        <span class="badge ${badge.cls}">${badge.text}</span>
-        ${p.mute_notify ? `<span class="badge muted-badge">已忽略提醒</span>` : ""}
-      </h2>
+      <div class="card-head">
+        <h2>
+          <span class="name">${escapeHtml(p.name)}</span>
+          <span class="badge ${badge.cls}">${badge.text}</span>
+          ${p.mute_notify ? `<span class="badge muted-badge">已忽略提醒</span>` : ""}
+        </h2>
+        <div class="more-wrap">
+          <button type="button" class="more-toggle" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false" title="更多操作">⋯</button>
+          <div class="more-menu" role="menu" hidden>
+            <button type="button" class="more-item" role="menuitem" data-act="refresh">检查更新</button>
+            <button type="button" class="more-item" role="menuitem" data-act="move">移到分组</button>
+            <button type="button" class="more-item" role="menuitem" data-act="mute">${muteLabel}</button>
+            <button type="button" class="more-item danger" role="menuitem" data-act="remove">移除监控</button>
+          </div>
+        </div>
+      </div>
       ${svnLine}
       <p class="path" title="本地目录">${escapeHtml(p.path)}</p>
       <div class="meta">
@@ -368,27 +405,56 @@ function renderCard(p: ProjectState): HTMLLIElement {
       </div>
     </div>
     <div class="card-actions">
-      <button type="button" class="btn ghost tiny" data-act="mute">${muteLabel}</button>
-      <button type="button" class="btn ghost tiny" data-act="move">移组</button>
-      <button type="button" class="btn ghost tiny" data-act="refresh">刷新</button>
-      <button type="button" class="btn warn tiny" data-act="update" title="TortoiseSVN Update" ${p.status === "behind" ? "" : "disabled"}>Update</button>
-      <button type="button" class="btn ghost tiny" data-act="open">打开</button>
-      <button type="button" class="btn ghost tiny" data-act="log" title="TortoiseSVN Show Log">日志</button>
-      <button type="button" class="btn danger tiny" data-act="remove">移除</button>
+      <button type="button" class="btn ghost tiny" data-act="open" title="在资源管理器中打开">文件夹</button>
+      <button type="button" class="btn ghost tiny" data-act="log" title="TortoiseSVN 日志">日志</button>
+      <button type="button" class="btn ghost tiny" data-act="cursor" title="用 Cursor 打开此目录">Cursor</button>
+      ${updateBtn}
     </div>
   `;
 
   bindCardPointerDrag(li, li.querySelector<HTMLElement>(".card-drag")!, p);
 
-  li.querySelectorAll(".card-actions button[data-act]").forEach((btn) => {
+  const moreWrap = li.querySelector<HTMLElement>(".more-wrap")!;
+  const moreToggle = li.querySelector<HTMLButtonElement>(".more-toggle")!;
+  const moreMenu = li.querySelector<HTMLElement>(".more-menu")!;
+
+  moreToggle.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const willOpen = moreMenu.hasAttribute("hidden");
+    closeAllMoreMenus();
+    if (willOpen) {
+      moreMenu.removeAttribute("hidden");
+      moreWrap.classList.add("open");
+      moreToggle.setAttribute("aria-expanded", "true");
+    }
+  });
+
+  li.querySelectorAll<HTMLButtonElement>("[data-act]").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      onAction(p, (btn as HTMLButtonElement).dataset.act!);
+      closeAllMoreMenus();
+      void onAction(p, btn.dataset.act!);
     });
   });
 
   return li;
 }
+
+function closeAllMoreMenus() {
+  document.querySelectorAll<HTMLElement>(".more-menu:not([hidden])").forEach((menu) => {
+    menu.setAttribute("hidden", "");
+    menu.closest(".more-wrap")?.classList.remove("open");
+    menu
+      .closest(".more-wrap")
+      ?.querySelector(".more-toggle")
+      ?.setAttribute("aria-expanded", "false");
+  });
+}
+
+document.addEventListener("click", () => closeAllMoreMenus());
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") closeAllMoreMenus();
+});
 
 const groupPicker = document.querySelector<HTMLDialogElement>("#group-picker")!;
 const groupPickerList = document.querySelector<HTMLDivElement>("#group-picker-list")!;
@@ -616,7 +682,10 @@ async function onAction(p: ProjectState, act: string) {
       setStatus(`${p.name} update 完成`);
     } else if (act === "open") {
       await invoke("open_project_folder", { id: p.id });
-      setStatus(useMock ? "演示：已打开" : `已打开 ${p.name}`);
+      setStatus(useMock ? "演示：已打开文件夹" : `已打开 ${p.name}`);
+    } else if (act === "cursor") {
+      await invoke("open_in_cursor", { id: p.id });
+      setStatus(useMock ? "演示：已用 Cursor 打开" : `Cursor 打开 ${p.name}`);
     } else if (act === "log") {
       await invoke("open_tortoise_log", { id: p.id });
       setStatus(useMock ? "演示：日志" : `日志 ${p.name}`);
@@ -771,6 +840,10 @@ async function boot() {
   // 下一帧再显示，避免首屏闪一下未排版内容
   requestAnimationFrame(() => {
     appEl?.classList.add("is-ready");
+    // 关闭后重建窗口时，Windows 可能把光标卡在 loading；通知后端清掉
+    if (!useMock) {
+      void invoke("notify_ui_ready").catch(() => undefined);
+    }
   });
 }
 
