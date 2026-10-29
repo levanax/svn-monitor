@@ -11,6 +11,7 @@ export interface ProjectState {
   path: string;
   group_id: string;
   mute_notify: boolean;
+  sort_order: number;
   local_rev: number | null;
   remote_rev: number | null;
   status: ProjectStatus;
@@ -18,11 +19,14 @@ export interface ProjectState {
   last_checked: string | null;
 }
 
+export type ThemeMode = "system" | "light" | "dark";
+
 export interface AppConfig {
   poll_interval_secs: number;
   notify_enabled: boolean;
   pause_when_locked: boolean;
   autostart: boolean;
+  theme: ThemeMode | string;
   groups: GroupConfig[];
   projects: {
     id: string;
@@ -30,5 +34,6 @@ export interface AppConfig {
     path: string;
     group_id: string;
     mute_notify?: boolean;
+    sort_order?: number;
   }[];
 }

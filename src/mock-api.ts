@@ -10,10 +10,11 @@ export function createMockApi() {
   ];
 
   const cfg: AppConfig = {
-    poll_interval_secs: 60,
+    poll_interval_secs: 300,
     notify_enabled: true,
     pause_when_locked: true,
     autostart: false,
+    theme: "system",
     groups,
     projects: [],
   };
@@ -25,9 +26,23 @@ export function createMockApi() {
       path: "C:\\work\\mobile\\trunk",
       group_id: "g-mobile",
       mute_notify: false,
+      sort_order: 0,
       local_rev: 18490,
       remote_rev: 18497,
       status: "behind",
+      error: null,
+      last_checked: new Date().toISOString(),
+    },
+    {
+      id: "demo-3",
+      name: "mobile-branch",
+      path: "C:\\work\\mobile\\branch",
+      group_id: "g-mobile",
+      mute_notify: false,
+      sort_order: 1,
+      local_rev: 100,
+      remote_rev: 100,
+      status: "up_to_date",
       error: null,
       last_checked: new Date().toISOString(),
     },
@@ -37,6 +52,7 @@ export function createMockApi() {
       path: "C:\\work\\tools",
       group_id: UNGROUPED,
       mute_notify: false,
+      sort_order: 0,
       local_rev: 220,
       remote_rev: 220,
       status: "up_to_date",
@@ -45,13 +61,17 @@ export function createMockApi() {
     },
   ];
 
-  cfg.projects = projects.map((p) => ({
-    id: p.id,
-    name: p.name,
-    path: p.path,
-    group_id: p.group_id,
-    mute_notify: p.mute_notify,
-  }));
+  const syncCfgProjects = () => {
+    cfg.projects = projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      path: p.path,
+      group_id: p.group_id,
+      mute_notify: p.mute_notify,
+      sort_order: p.sort_order,
+    }));
+  };
+  syncCfgProjects();
 
   return {
     async invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -59,7 +79,12 @@ export function createMockApi() {
         case "get_config":
           return cfg as T;
         case "list_projects":
-          return projects as T;
+          return [...projects].sort(
+            (a, b) =>
+              a.group_id.localeCompare(b.group_id) ||
+              a.sort_order - b.sort_order ||
+              a.name.localeCompare(b.name),
+          ) as T;
         case "list_groups":
           return groups as T;
         case "add_group": {
@@ -88,6 +113,7 @@ export function createMockApi() {
             if (p.group_id === id) p.group_id = UNGROUPED;
           }
           cfg.groups = [...groups];
+          syncCfgProjects();
           return undefined as T;
         }
         case "set_project_group": {
@@ -95,9 +121,12 @@ export function createMockApi() {
           const groupId = String(args?.groupId ?? UNGROUPED);
           const found = projects.find((p) => p.id === id);
           if (!found) throw new Error("project not found");
+          const max = projects
+            .filter((p) => p.group_id === groupId)
+            .reduce((m, p) => Math.max(m, p.sort_order), -1);
           found.group_id = groupId;
-          const cfgP = cfg.projects.find((p) => p.id === id);
-          if (cfgP) cfgP.group_id = groupId;
+          found.sort_order = max + 1;
+          syncCfgProjects();
           return found as T;
         }
         case "set_project_mute": {
@@ -106,21 +135,44 @@ export function createMockApi() {
           const found = projects.find((p) => p.id === id);
           if (!found) throw new Error("project not found");
           found.mute_notify = mute;
-          const cfgP = cfg.projects.find((p) => p.id === id);
-          if (cfgP) cfgP.mute_notify = mute;
+          syncCfgProjects();
           return found as T;
+        }
+        case "reorder_projects": {
+          const groupId = String(args?.groupId ?? "");
+          const orderedIds = (args?.orderedIds as string[]) ?? [];
+          orderedIds.forEach((id, order) => {
+            const found = projects.find((p) => p.id === id && p.group_id === groupId);
+            if (found) found.sort_order = order;
+          });
+          syncCfgProjects();
+          return undefined as T;
+        }
+        case "reorder_groups": {
+          const orderedIds = (args?.orderedIds as string[]) ?? [];
+          const byId = new Map(groups.map((g) => [g.id, g]));
+          if (orderedIds.length !== groups.length || orderedIds.some((id) => !byId.has(id))) {
+            throw new Error("分组排序列表与现有分组不匹配");
+          }
+          groups.splice(0, groups.length, ...orderedIds.map((id) => byId.get(id)!));
+          cfg.groups = [...groups];
+          return undefined as T;
         }
         case "add_project": {
           const path = String(args?.path ?? "");
           const groupId = String(args?.groupId ?? UNGROUPED);
           const id = `demo-${Date.now()}`;
           const name = path.split(/[/\\]/).filter(Boolean).pop() ?? "new";
+          const max = projects
+            .filter((p) => p.group_id === groupId)
+            .reduce((m, p) => Math.max(m, p.sort_order), -1);
           const p: ProjectState = {
             id,
             name,
             path,
             group_id: groupId,
             mute_notify: false,
+            sort_order: max + 1,
             local_rev: 1,
             remote_rev: 1,
             status: "up_to_date",
@@ -128,13 +180,13 @@ export function createMockApi() {
             last_checked: new Date().toISOString(),
           };
           projects = [...projects, p];
-          cfg.projects.push({ id, name, path, group_id: groupId, mute_notify: false });
+          syncCfgProjects();
           return p as T;
         }
         case "remove_project": {
           const id = String(args?.id ?? "");
           projects = projects.filter((p) => p.id !== id);
-          cfg.projects = cfg.projects.filter((p) => p.id !== id);
+          syncCfgProjects();
           return undefined as T;
         }
         case "save_settings": {
@@ -142,6 +194,7 @@ export function createMockApi() {
           cfg.notify_enabled = Boolean(args?.notifyEnabled);
           cfg.pause_when_locked = Boolean(args?.pauseWhenLocked);
           cfg.autostart = Boolean(args?.autostart);
+          cfg.theme = String(args?.theme ?? cfg.theme);
           return undefined as T;
         }
         case "check_project":
@@ -158,6 +211,7 @@ export function createMockApi() {
         }
         case "check_all":
         case "open_project_folder":
+        case "open_tortoise_log":
           return undefined as T;
         case "is_session_locked":
           return false as T;

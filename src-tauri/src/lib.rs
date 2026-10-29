@@ -17,6 +17,7 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_notification::NotificationExt;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -35,6 +36,7 @@ pub struct ProjectState {
     pub path: String,
     pub group_id: String,
     pub mute_notify: bool,
+    pub sort_order: u32,
     pub local_rev: Option<u64>,
     pub remote_rev: Option<u64>,
     pub status: ProjectStatus,
@@ -80,6 +82,7 @@ impl ProjectState {
             path: p.path.clone(),
             group_id: p.group_id.clone(),
             mute_notify: p.mute_notify,
+            sort_order: p.sort_order,
             local_rev: None,
             remote_rev: None,
             status: ProjectStatus::Unknown,
@@ -110,6 +113,92 @@ fn persist(state: &AppState) -> Result<(), String> {
 
 fn emit_project(app: &AppHandle, state: &ProjectState) {
     let _ = app.emit("project-updated", state);
+}
+
+fn truncate_notify_text(s: &str, max_chars: usize) -> String {
+    let count = s.chars().count();
+    if count <= max_chars {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+/// 返回是否成功发出系统通知。失败时不记「已通知」，以便下次轮询重试。
+fn show_update_notification(app: &AppHandle, name: &str, local: u64, remote: u64, log_summary: &str) -> bool {
+    let title = "SVN 有更新";
+    let headline = format!("{name}：本地 r{local} → 远端 r{remote}");
+    let first_log = log_summary.lines().next().unwrap_or("").trim();
+    let body = if first_log.is_empty() {
+        headline.clone()
+    } else {
+        format!("{headline}\n{first_log}")
+    };
+    // Windows Toast 正文过长易失败；截断到合理长度
+    let body = truncate_notify_text(&body, 180);
+
+    #[cfg(windows)]
+    {
+        if show_windows_toast(app, title, &headline, first_log) {
+            return true;
+        }
+        eprintln!("windows toast failed, falling back to notification plugin");
+    }
+
+    match app
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+    {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("notification plugin show failed: {e}");
+            false
+        }
+    }
+}
+
+#[cfg(windows)]
+fn show_windows_toast(app: &AppHandle, title: &str, line1: &str, line2: &str) -> bool {
+    use tauri_winrt_notification::{Duration, Toast};
+
+    let line1 = truncate_notify_text(line1, 120);
+    let line2 = truncate_notify_text(line2, 120);
+    let identifier = app.config().identifier.clone();
+
+    // 已安装包可用 AppUserModelID；从 target/release 直接运行时改用 PowerShell AUMID
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.display().to_string()))
+        .unwrap_or_default();
+    let from_cargo_target = exe_dir.ends_with(r"\target\debug")
+        || exe_dir.ends_with(r"\target\release")
+        || exe_dir.ends_with("/target/debug")
+        || exe_dir.ends_with("/target/release");
+
+    let app_ids: Vec<&str> = if from_cargo_target {
+        vec![Toast::POWERSHELL_APP_ID, identifier.as_str()]
+    } else {
+        vec![identifier.as_str(), Toast::POWERSHELL_APP_ID]
+    };
+
+    for app_id in app_ids {
+        let mut toast = Toast::new(app_id)
+            .title(title)
+            .text1(&line1)
+            .duration(Duration::Long);
+        if !line2.is_empty() {
+            toast = toast.text2(&line2);
+        }
+        match toast.show() {
+            Ok(()) => return true,
+            Err(e) => eprintln!("toast via {app_id} failed: {e}"),
+        }
+    }
+    false
 }
 
 fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState, String> {
@@ -147,15 +236,26 @@ fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState
                 let muted = proj.mute_notify;
                 let notify_on = guard.config.notify_enabled;
                 let already = guard.notified_remote.get(id).copied();
+                // 全局「系统通知」开启且未对本项目忽略时，必须发系统通知
                 let should_notify = notify_on && !muted && already != Some(revs.remote);
                 if should_notify {
-                    guard.notified_remote.insert(id.to_string(), revs.remote);
+                    drop(guard);
+                    let log_summary = svn::fetch_incoming_log_summary(
+                        PathBuf::from(&path).as_path(),
+                        revs.local,
+                        revs.remote,
+                    );
+                    // 仅在真正发出通知后记录，避免失败后本会话再也不提醒
+                    if show_update_notification(app, &name, revs.local, revs.remote, &log_summary) {
+                        let mut guard = state.inner.lock();
+                        guard.notified_remote.insert(id.to_string(), revs.remote);
+                    }
                     let payload = serde_json::json!({
                         "name": name,
                         "local": revs.local,
                         "remote": revs.remote,
+                        "log": log_summary,
                     });
-                    drop(guard);
                     let _ = app.emit("svn-behind", payload);
                     let guard = state.inner.lock();
                     let out = guard.projects.get(id).cloned().unwrap();
@@ -199,7 +299,7 @@ fn spawn_poller(app: AppHandle, state: AppState) {
     thread::spawn(move || loop {
         let interval = {
             let guard = state.inner.lock();
-            guard.config.poll_interval_secs.max(10)
+            guard.config.poll_interval_secs.max(60)
         };
         thread::sleep(Duration::from_secs(interval));
         if polling_paused(&state) {
@@ -221,6 +321,7 @@ fn list_projects(state: State<'_, AppState>) -> Vec<ProjectState> {
     list.sort_by(|a, b| {
         a.group_id
             .cmp(&b.group_id)
+            .then_with(|| a.sort_order.cmp(&b.sort_order))
             .then_with(|| a.name.cmp(&b.name))
     });
     list
@@ -305,23 +406,86 @@ fn set_project_group(
         if !guard.config.groups.iter().any(|g| g.id == group_id) {
             return Err("目标分组不存在".into());
         }
-        let cfg = guard
-            .config
-            .projects
-            .iter_mut()
-            .find(|p| p.id == id)
-            .ok_or_else(|| "project not found".to_string())?;
-        cfg.group_id = group_id.clone();
+        let order = config::next_sort_order(&guard.config, &group_id);
+        {
+            let cfg = guard
+                .config
+                .projects
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or_else(|| "project not found".to_string())?;
+            cfg.group_id = group_id.clone();
+            cfg.sort_order = order;
+        }
         let proj = guard
             .projects
             .get_mut(&id)
             .ok_or_else(|| "project not found".to_string())?;
         proj.group_id = group_id;
+        proj.sort_order = order;
         proj.clone()
     };
     persist(&state)?;
     emit_project(&app, &out);
     Ok(out)
+}
+
+#[tauri::command]
+fn reorder_projects(
+    state: State<'_, AppState>,
+    group_id: String,
+    ordered_ids: Vec<String>,
+) -> Result<(), String> {
+    {
+        let mut guard = state.inner.lock();
+        if !guard.config.groups.iter().any(|g| g.id == group_id) {
+            return Err("分组不存在".into());
+        }
+        let in_group: std::collections::HashSet<_> = guard
+            .config
+            .projects
+            .iter()
+            .filter(|p| p.group_id == group_id)
+            .map(|p| p.id.clone())
+            .collect();
+        if ordered_ids.len() != in_group.len()
+            || ordered_ids.iter().any(|id| !in_group.contains(id))
+        {
+            return Err("排序列表与组内项目不匹配".into());
+        }
+        for (order, id) in ordered_ids.iter().enumerate() {
+            if let Some(cfg) = guard.config.projects.iter_mut().find(|p| p.id == *id) {
+                cfg.sort_order = order as u32;
+            }
+            if let Some(proj) = guard.projects.get_mut(id) {
+                proj.sort_order = order as u32;
+            }
+        }
+    }
+    persist(&state)
+}
+
+#[tauri::command]
+fn reorder_groups(state: State<'_, AppState>, ordered_ids: Vec<String>) -> Result<(), String> {
+    {
+        let mut guard = state.inner.lock();
+        let known: std::collections::HashSet<_> =
+            guard.config.groups.iter().map(|g| g.id.clone()).collect();
+        if ordered_ids.len() != known.len() || ordered_ids.iter().any(|id| !known.contains(id)) {
+            return Err("分组排序列表与现有分组不匹配".into());
+        }
+        let mut by_id: std::collections::HashMap<_, _> = guard
+            .config
+            .groups
+            .drain(..)
+            .map(|g| (g.id.clone(), g))
+            .collect();
+        guard.config.groups = ordered_ids
+            .into_iter()
+            .filter_map(|id| by_id.remove(&id))
+            .collect();
+    }
+    persist(&state)
 }
 
 #[tauri::command]
@@ -380,17 +544,19 @@ fn add_project(
         return Err("所选目录不是 SVN 工作副本（缺少 .svn）".into());
     }
 
-    let gid = {
+    let (gid, order) = {
         let guard = state.inner.lock();
         let candidate = group_id.unwrap_or_else(|| UNGROUPED_ID.to_string());
-        if guard.config.groups.iter().any(|g| g.id == candidate) {
+        let gid = if guard.config.groups.iter().any(|g| g.id == candidate) {
             candidate
         } else {
             UNGROUPED_ID.to_string()
-        }
+        };
+        let order = config::next_sort_order(&guard.config, &gid);
+        (gid, order)
     };
 
-    let project = config::new_project(path, name, Some(gid));
+    let project = config::new_project(path, name, Some(gid), order);
     let snapshot = {
         let mut guard = state.inner.lock();
         if guard
@@ -444,9 +610,10 @@ fn save_settings(
     notify_enabled: bool,
     pause_when_locked: bool,
     autostart: bool,
+    theme: String,
 ) -> Result<(), String> {
-    if poll_interval_secs < 10 {
-        return Err("poll interval must be >= 10 seconds".into());
+    if poll_interval_secs < 60 {
+        return Err("poll interval must be >= 1 minute".into());
     }
     {
         let mut guard = state.inner.lock();
@@ -454,6 +621,7 @@ fn save_settings(
         guard.config.notify_enabled = notify_enabled;
         guard.config.pause_when_locked = pause_when_locked;
         guard.config.autostart = autostart;
+        guard.config.theme = config::normalize_theme(&theme);
     }
     persist(&state)?;
     sync_autostart(&app, autostart)
@@ -493,7 +661,13 @@ fn update_project(
             .map(|p| p.path.clone())
             .ok_or_else(|| "project not found".to_string())?
     };
-    svn::update(PathBuf::from(&path).as_path()).map_err(|e| e.to_string())?;
+    // 优先打开 TortoiseSVN Update UI；未安装时回退到 svn update
+    let wc = PathBuf::from(&path);
+    if svn::find_tortoise_proc().is_some() {
+        svn::open_tortoise_update(wc.as_path()).map_err(|e| e.to_string())?;
+    } else {
+        svn::update(wc.as_path()).map_err(|e| e.to_string())?;
+    }
     {
         let mut guard = state.inner.lock();
         guard.notified_remote.remove(&id);
@@ -517,6 +691,19 @@ fn open_project_folder(app: AppHandle, state: State<'_, AppState>, id: String) -
 }
 
 #[tauri::command]
+fn open_tortoise_log(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let path = {
+        let guard = state.inner.lock();
+        guard
+            .projects
+            .get(&id)
+            .map(|p| p.path.clone())
+            .ok_or_else(|| "project not found".to_string())?
+    };
+    svn::open_tortoise_show_log(PathBuf::from(&path).as_path()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn is_session_locked(state: State<'_, AppState>) -> bool {
     let guard = state.inner.lock();
     guard.config.pause_when_locked && guard.session_locked
@@ -535,6 +722,8 @@ fn show_main_window(app: &AppHandle) {
         .min_inner_size(720.0, 520.0)
         .resizable(true)
         .center()
+        // 与 tauri.conf dragDropEnabled=false 一致：否则 Windows 上 HTML5 组内拖排序失效
+        .disable_drag_drop_handler()
         .build()
     {
         Ok(w) => {
@@ -595,6 +784,8 @@ pub fn run() {
             remove_group,
             set_project_group,
             set_project_mute,
+            reorder_projects,
+            reorder_groups,
             add_project,
             remove_project,
             save_settings,
@@ -602,6 +793,7 @@ pub fn run() {
             check_all,
             update_project,
             open_project_folder,
+            open_tortoise_log,
             is_session_locked,
         ])
         .setup(move |app| {

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test:e2e": "playwright test",
+    "test:dnd-webview": "node scripts/check-dnd-webview.mjs",
     "test:unit-rust": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
