@@ -33,6 +33,20 @@ npm run tauri dev
 npm run tauri build
 ```
 
+安装包输出示例：`src-tauri/target/release/bundle/nsis/SVN Monitor_<version>_x64-setup.exe`。
+
+### 改版本号
+
+安装包文件名与产物版本**不读**根目录 `package.json`，要以 Tauri / Rust 配置为准。发版时请三处一起改成同一版本（例如 `0.1.1`）：
+
+| 文件 | 字段 | 作用 |
+|------|------|------|
+| `src-tauri/tauri.conf.json` | `"version"` | **决定** NSIS/MSI 安装包文件名与安装包版本 |
+| `src-tauri/Cargo.toml` | `version` | Rust crate / 可执行文件侧版本，建议同步 |
+| `package.json` | `"version"` | 仅前端 npm 包版本，**不影响**安装包文件名 |
+
+改完后重新执行 `npm run tauri build`。
+
 ## 测试
 
 ```bash
