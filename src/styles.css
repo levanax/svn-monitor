@@ -1,59 +1,201 @@
-:root,
-html[data-theme="dark"] {
-  --bg0: #0f1412;
-  --bg1: #171e1b;
-  --bg2: #1f2924;
-  --line: #2c3a33;
-  --text: #e7efe9;
-  --muted: #8fa399;
-  --accent: #3d9b6e;
-  --accent-dim: #2a6b4c;
-  --warn: #d4a017;
-  --danger: #c45c4a;
-  --ok: #5cb88a;
-  --warn-text: #f0d78a;
-  --danger-text: #e8a397;
-  --ok-text: #b7efcf;
-  --behind: #e85a9b;
-  --behind-text: #ffd0e6;
-  --error-text: #ffc4ba;
-  --glow-a: #1a3328;
-  --glow-b: #243028;
-  --radius: 0.5rem;
+:root {
+  --radius: 0.55rem;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 0.18s;
   --dur-med: 0.32s;
   --dur-slow: 0.45s;
-  font-family: system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei",
-    sans-serif;
+  --warn: #c99212;
+  --danger: #c45c4a;
+  --behind: #e85a9b;
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, "PingFang SC",
+    "Microsoft YaHei", sans-serif;
   color: var(--text);
   background: var(--bg0);
   line-height: 1.4;
   font-size: 100%;
   font-weight: 400;
-  color-scheme: dark;
 }
 
-html[data-theme="light"] {
-  --bg0: #f3f6f4;
-  --bg1: #ffffff;
-  --bg2: #eef3f0;
-  --line: #c9d5cd;
-  --text: #1c2a22;
-  --muted: #5f7266;
-  --accent: #2f8a5a;
-  --accent-dim: #247048;
-  --warn: #b8860b;
-  --danger: #b54a3a;
+/* Edge 风格：晨曦 — 暖粉橙渐变 */
+html[data-theme="dawn"] {
+  --bg0: #fff6f1;
+  --bg1: rgba(255, 255, 255, 0.28);
+  --bg2: rgba(255, 255, 255, 0.22);
+  --line: rgba(236, 213, 203, 0.55);
+  --text: #3a2a26;
+  --muted: #8a6d64;
+  --accent: #e36b4a;
+  --accent-dim: #c45535;
+  --ok: #3f9b6e;
+  --warn-text: #9a6a10;
+  --danger-text: #9a3d30;
+  --ok-text: #1f6b44;
+  --behind-text: #9b2d63;
+  --error-text: #9a3d30;
+  --glow-a: #ffc9b5;
+  --glow-b: #ffd9a8;
+  --panel: rgba(255, 255, 255, 0.32);
+  --glass: rgba(255, 255, 255, 0.26);
+  --glass-edge: rgba(255, 255, 255, 0.62);
+  --glass-shine: rgba(255, 255, 255, 0.72);
+  --glass-shadow: rgba(90, 50, 30, 0.08);
+  color-scheme: light;
+}
+
+/* 晴空 — 柔蓝 */
+html[data-theme="sky"] {
+  --bg0: #f2f7ff;
+  --bg1: rgba(255, 255, 255, 0.28);
+  --bg2: rgba(255, 255, 255, 0.22);
+  --line: rgba(201, 216, 239, 0.55);
+  --text: #1f2d44;
+  --muted: #5f738f;
+  --accent: #3b82d6;
+  --accent-dim: #2a66ad;
   --ok: #2f9a63;
   --warn-text: #8a6508;
   --danger-text: #9a3d30;
   --ok-text: #1f6b44;
-  --behind: #d9488a;
   --behind-text: #9b2d63;
   --error-text: #9a3d30;
-  --glow-a: #d7ebe0;
-  --glow-b: #e4eee8;
+  --glow-a: #b7d4ff;
+  --glow-b: #c9e8ff;
+  --panel: rgba(255, 255, 255, 0.32);
+  --glass: rgba(255, 255, 255, 0.26);
+  --glass-edge: rgba(255, 255, 255, 0.62);
+  --glass-shine: rgba(255, 255, 255, 0.72);
+  --glass-shadow: rgba(40, 70, 120, 0.08);
+  color-scheme: light;
+}
+
+/* 丁香 — 淡紫 */
+html[data-theme="lilac"] {
+  --bg0: #f7f3ff;
+  --bg1: rgba(255, 255, 255, 0.28);
+  --bg2: rgba(255, 255, 255, 0.22);
+  --line: rgba(216, 204, 235, 0.55);
+  --text: #322746;
+  --muted: #71628a;
+  --accent: #8b6fd4;
+  --accent-dim: #6f54b5;
+  --ok: #2f9a63;
+  --warn-text: #8a6508;
+  --danger-text: #9a3d30;
+  --ok-text: #1f6b44;
+  --behind-text: #9b2d63;
+  --error-text: #9a3d30;
+  --glow-a: #d9c4ff;
+  --glow-b: #f0c7e8;
+  --panel: rgba(255, 255, 255, 0.32);
+  --glass: rgba(255, 255, 255, 0.26);
+  --glass-edge: rgba(255, 255, 255, 0.62);
+  --glass-shine: rgba(255, 255, 255, 0.72);
+  --glass-shadow: rgba(70, 40, 110, 0.08);
+  color-scheme: light;
+}
+
+/* 薄荷 — 青绿 */
+html[data-theme="mint"] {
+  --bg0: #f0faf6;
+  --bg1: rgba(255, 255, 255, 0.28);
+  --bg2: rgba(255, 255, 255, 0.22);
+  --line: rgba(197, 224, 212, 0.55);
+  --text: #1c2f28;
+  --muted: #5a7469;
+  --accent: #2f9b78;
+  --accent-dim: #247a5d;
+  --ok: #2f9a63;
+  --warn-text: #8a6508;
+  --danger-text: #9a3d30;
+  --ok-text: #1f6b44;
+  --behind-text: #9b2d63;
+  --error-text: #9a3d30;
+  --glow-a: #b6ecd8;
+  --glow-b: #cfe9ff;
+  --panel: rgba(255, 255, 255, 0.32);
+  --glass: rgba(255, 255, 255, 0.26);
+  --glass-edge: rgba(255, 255, 255, 0.62);
+  --glass-shine: rgba(255, 255, 255, 0.72);
+  --glass-shadow: rgba(30, 80, 60, 0.08);
+  color-scheme: light;
+}
+
+/* 暮色 — 深蓝紫（暗色） */
+html[data-theme="dusk"] {
+  --bg0: #141824;
+  --bg1: rgba(255, 255, 255, 0.08);
+  --bg2: rgba(255, 255, 255, 0.06);
+  --line: rgba(120, 130, 170, 0.28);
+  --text: #e8ecf8;
+  --muted: #9aa3bf;
+  --accent: #7b8cff;
+  --accent-dim: #5d6cdb;
+  --ok: #5cb88a;
+  --warn-text: #f0d78a;
+  --danger-text: #e8a397;
+  --ok-text: #b7efcf;
+  --behind-text: #ffd0e6;
+  --error-text: #ffc4ba;
+  --glow-a: #2a3358;
+  --glow-b: #3a2450;
+  --panel: rgba(255, 255, 255, 0.08);
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-edge: rgba(255, 255, 255, 0.22);
+  --glass-shine: rgba(255, 255, 255, 0.18);
+  --glass-shadow: rgba(0, 0, 0, 0.28);
+  color-scheme: dark;
+}
+
+/* 静夜 — 近黑灰（暗色） */
+html[data-theme="noir"],
+html[data-theme="dark"] {
+  --bg0: #121416;
+  --bg1: rgba(255, 255, 255, 0.08);
+  --bg2: rgba(255, 255, 255, 0.06);
+  --line: rgba(140, 145, 155, 0.28);
+  --text: #e8eaed;
+  --muted: #9aa0a8;
+  --accent: #6ea8fe;
+  --accent-dim: #4d86d8;
+  --ok: #5cb88a;
+  --warn-text: #f0d78a;
+  --danger-text: #e8a397;
+  --ok-text: #b7efcf;
+  --behind-text: #ffd0e6;
+  --error-text: #ffc4ba;
+  --glow-a: #243044;
+  --glow-b: #2a2438;
+  --panel: rgba(255, 255, 255, 0.08);
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-edge: rgba(255, 255, 255, 0.2);
+  --glass-shine: rgba(255, 255, 255, 0.16);
+  --glass-shadow: rgba(0, 0, 0, 0.32);
+  color-scheme: dark;
+}
+
+/* 浅色（跟随系统解析为 light 时也用此套） */
+html[data-theme="light"] {
+  --bg0: #f2f7ff;
+  --bg1: rgba(255, 255, 255, 0.28);
+  --bg2: rgba(255, 255, 255, 0.22);
+  --line: rgba(201, 216, 239, 0.55);
+  --text: #1f2d44;
+  --muted: #5f738f;
+  --accent: #3b82d6;
+  --accent-dim: #2a66ad;
+  --ok: #2f9a63;
+  --warn-text: #8a6508;
+  --danger-text: #9a3d30;
+  --ok-text: #1f6b44;
+  --behind-text: #9b2d63;
+  --error-text: #9a3d30;
+  --glow-a: #b7d4ff;
+  --glow-b: #c9e8ff;
+  --panel: rgba(255, 255, 255, 0.32);
+  --glass: rgba(255, 255, 255, 0.26);
+  --glass-edge: rgba(255, 255, 255, 0.62);
+  --glass-shine: rgba(255, 255, 255, 0.72);
+  --glass-shadow: rgba(40, 70, 120, 0.08);
   color-scheme: light;
 }
 
@@ -69,10 +211,13 @@ html,
 body {
   margin: 0;
   height: 100%;
+  /* Edge 式柔和多点光晕渐变 */
   background:
-    radial-gradient(900px 360px at 8% -8%, var(--glow-a) 0%, transparent 55%),
-    radial-gradient(700px 300px at 100% 0%, var(--glow-b) 0%, transparent 50%),
-    var(--bg0);
+    radial-gradient(1200px 520px at 12% -18%, var(--glow-a) 0%, transparent 58%),
+    radial-gradient(900px 420px at 92% -8%, var(--glow-b) 0%, transparent 52%),
+    radial-gradient(700px 380px at 70% 110%, color-mix(in srgb, var(--glow-a) 55%, transparent) 0%, transparent 55%),
+    linear-gradient(165deg, color-mix(in srgb, var(--bg0) 88%, var(--glow-a)) 0%, var(--bg0) 48%, color-mix(in srgb, var(--bg0) 90%, var(--glow-b)) 100%);
+  background-attachment: fixed;
   color: var(--text);
   transition:
     background-color var(--dur-med) var(--ease-out),
@@ -80,7 +225,7 @@ body {
 }
 
 body {
-  padding: 0.65rem 0.75rem 0.55rem;
+  padding: 0.55rem 0.7rem 0.5rem;
   font-size: 1rem;
   overflow: hidden;
   cursor: default;
@@ -112,64 +257,46 @@ main {
   flex-direction: column;
 }
 
-.top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  margin-bottom: 0.5rem;
-  flex: 0 0 auto;
+/* 液态玻璃：半透明 + 模糊 + 高光描边 */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(22px) saturate(1.55);
+  -webkit-backdrop-filter: blur(22px) saturate(1.55);
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    0 10px 28px var(--glass-shadow);
 }
 
-.brand {
+.toolbar {
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.45rem 0.75rem;
+  margin-bottom: 0.55rem;
+  flex: 0 0 auto;
+  padding: 0.45rem 0.6rem;
+  border-radius: calc(var(--radius) + 0.15rem);
+  background: var(--panel);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    0 10px 28px var(--glass-shadow);
+}
+
+.toolbar-actions,
+.toolbar-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+}
+
+.toolbar-settings {
+  flex: 1 1 auto;
   min-width: 0;
-}
-
-.logo {
-  width: 1.75rem;
-  height: 1.75rem;
-  flex: 0 0 auto;
-  border-radius: 0.45rem;
-  background: linear-gradient(145deg, #4eb882 0%, #2f6f52 55%, #1d4334 100%);
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.125rem;
-  letter-spacing: 0.01em;
-  font-weight: 400;
-}
-
-.sub {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
-.top-actions {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.settings {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.65rem;
-  align-items: center;
-  padding: 0.4rem 0.55rem;
-  background: color-mix(in srgb, var(--bg1) 88%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  margin-bottom: 0.5rem;
-  flex: 0 0 auto;
-  transition:
-    background-color var(--dur-med) var(--ease-out),
-    border-color var(--dur-med) var(--ease-out);
 }
 
 .field {
@@ -185,11 +312,13 @@ h1 {
 .group-select {
   padding: 0.2rem 0.4rem;
   border-radius: 0.35rem;
-  border: 1px solid var(--line);
-  background: var(--bg2);
+  border: 1px solid var(--glass-edge);
+  background: color-mix(in srgb, var(--bg0) 55%, var(--glass));
   color: var(--text);
   font: inherit;
   font-size: 1rem;
+  backdrop-filter: blur(12px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
 }
 
 .field input {
@@ -200,6 +329,25 @@ h1 {
 .group-select {
   min-width: 6.5rem;
   max-width: 10rem;
+  /* 弹出列表跟系统 color-scheme；option 再给实底，避免玻璃透明把文字吃掉 */
+  color-scheme: light;
+}
+
+.field select option,
+.group-select option {
+  background-color: #ffffff;
+  color: #1f2d44;
+}
+
+html[data-scheme="dark"] .field select,
+html[data-scheme="dark"] .group-select {
+  color-scheme: dark;
+}
+
+html[data-scheme="dark"] .field select option,
+html[data-scheme="dark"] .group-select option {
+  background-color: #1a1e28;
+  color: #e8ecf8;
 }
 
 .check {
@@ -262,8 +410,8 @@ h1 {
 }
 
 .btn.primary {
-  background: linear-gradient(180deg, #4ec987, #2f8a5a 55%, var(--accent-dim));
-  border-color: #3a9a68;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent) 48%, var(--accent-dim));
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
   color: #fff;
   font-weight: 400;
 }
@@ -298,8 +446,10 @@ h1 {
 }
 
 .btn.ghost {
-  background: var(--bg2);
-  border-color: var(--line);
+  background: color-mix(in srgb, var(--glass) 70%, transparent);
+  border-color: var(--glass-edge);
+  backdrop-filter: blur(10px) saturate(1.3);
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
 }
 
 .btn.warn {
@@ -348,9 +498,21 @@ h1 {
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg1);
+  border: 1px solid var(--glass-edge);
+  border-radius: calc(var(--radius) + 0.2rem);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--glass-shine) 35%, transparent) 0%,
+      var(--glass) 28%,
+      color-mix(in srgb, var(--glass) 70%, transparent) 100%
+    );
+  backdrop-filter: blur(28px) saturate(1.65);
+  -webkit-backdrop-filter: blur(28px) saturate(1.65);
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    inset 0 0 0 0.5px color-mix(in srgb, var(--glass-shine) 35%, transparent),
+    0 14px 36px var(--glass-shadow);
   overflow: hidden;
   transition:
     background-color var(--dur-med) var(--ease-out),
@@ -400,8 +562,8 @@ h1 {
   align-items: center;
   gap: 0.35rem;
   padding: 0.45rem 0.55rem;
-  background: color-mix(in srgb, var(--bg2) 70%, transparent);
-  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--glass) 40%, transparent);
+  border-bottom: 1px solid var(--glass-edge);
   cursor: grab;
   user-select: none;
   flex: 0 0 auto;
@@ -438,7 +600,7 @@ h1 {
 .group-block.file-drop-target {
   outline: 2px dashed color-mix(in srgb, var(--accent) 80%, transparent);
   outline-offset: -2px;
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg1));
+  background: color-mix(in srgb, var(--accent) 14%, var(--glass));
 }
 
 .project-list.column-dragging .group-body {
@@ -446,10 +608,15 @@ h1 {
 }
 
 .group-picker {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid var(--glass-edge);
+  border-radius: calc(var(--radius) + 0.15rem);
   padding: 0;
-  background: var(--bg1);
+  background: color-mix(in srgb, var(--glass) 88%, transparent);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    0 18px 48px var(--glass-shadow);
   color: var(--text);
   max-width: min(36rem, 94vw);
   width: 100%;
@@ -530,8 +697,8 @@ h1 {
   gap: 0.65rem;
   padding: 0.7rem 0.85rem;
   border-radius: 0.4rem;
-  border: 1px solid var(--line);
-  background: var(--bg2);
+  border: 1px solid var(--glass-edge);
+  background: color-mix(in srgb, var(--glass) 55%, transparent);
   cursor: pointer;
   font-size: 1rem;
 }
@@ -617,9 +784,20 @@ h1 {
   row-gap: 0.4rem;
   min-width: 0;
   padding: 0.55rem 0.55rem 0.55rem 0.25rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius);
-  background: var(--bg2);
+  /* 嵌套在分组玻璃内：半透明层叠，避免双重 blur 发闷 */
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--glass-shine) 55%, transparent) 0%,
+      color-mix(in srgb, var(--glass) 42%, transparent) 42%,
+      color-mix(in srgb, var(--glass) 28%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    inset 0 -0.5px 0 color-mix(in srgb, var(--glass-edge) 40%, transparent),
+    0 4px 14px var(--glass-shadow);
   cursor: default;
   transition:
     background var(--dur-med) var(--ease-out),
@@ -711,14 +889,15 @@ h1 {
   background:
     linear-gradient(
       160deg,
-      color-mix(in srgb, var(--behind) 32%, var(--bg2)) 0%,
-      var(--bg2) 55%
+      color-mix(in srgb, var(--behind) 28%, transparent) 0%,
+      color-mix(in srgb, var(--glass) 70%, transparent) 58%
     );
-  border-color: color-mix(in srgb, var(--behind) 78%, var(--line));
-  border-width: 2px;
+  border-color: color-mix(in srgb, var(--behind) 65%, var(--glass-edge));
+  border-width: 1.5px;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--behind) 40%, transparent),
-    0 6px 18px color-mix(in srgb, var(--behind) 28%, transparent);
+    inset 0 1px 0 var(--glass-shine),
+    0 0 0 1px color-mix(in srgb, var(--behind) 35%, transparent),
+    0 8px 22px color-mix(in srgb, var(--behind) 22%, transparent);
   animation: behind-pulse 1.8s ease-in-out infinite;
 }
 
@@ -765,7 +944,7 @@ h1 {
   .status-line,
   html,
   body,
-  .settings {
+  .toolbar {
     transition: none !important;
     transform: none !important;
   }
@@ -776,8 +955,8 @@ h1 {
 }
 
 .card.error {
-  background: color-mix(in srgb, var(--danger) 12%, var(--bg2));
-  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--glass-edge));
 }
 
 .card.muted {
@@ -786,8 +965,8 @@ h1 {
 
 .badge.muted-badge {
   color: var(--muted);
-  background: var(--bg1);
-  border-color: var(--line);
+  background: color-mix(in srgb, var(--glass) 55%, transparent);
+  border-color: var(--glass-edge);
 }
 
 .card-main {
@@ -909,19 +1088,13 @@ h1 {
   color: #c5d2ff;
 }
 
-html[data-theme="light"] .svn-path.trunk .svn-kind {
+html[data-scheme="light"] .svn-path.trunk .svn-kind,
+html[data-scheme="light"] .svn-path.branch .svn-kind,
+html[data-scheme="light"] .svn-path.tag .svn-kind {
   color: #fff;
 }
 
-html[data-theme="light"] .svn-path.branch .svn-kind {
-  color: #fff;
-}
-
-html[data-theme="light"] .svn-path.tag .svn-kind {
-  color: #fff;
-}
-
-html[data-theme="light"] .svn-path.tag .svn-rel {
+html[data-scheme="light"] .svn-path.tag .svn-rel {
   color: #2f457a;
 }
 
@@ -977,8 +1150,8 @@ html[data-theme="light"] .svn-path.tag .svn-rel {
 
 .badge.checking {
   color: var(--muted);
-  background: var(--bg2);
-  border-color: var(--line);
+  background: color-mix(in srgb, var(--glass) 55%, transparent);
+  border-color: var(--glass-edge);
 }
 
 .card-actions {
@@ -1041,10 +1214,14 @@ html[data-theme="light"] .svn-path.tag .svn-rel {
   z-index: 30;
   min-width: 8rem;
   padding: 0.25rem;
-  border-radius: 0.4rem;
-  border: 1px solid var(--line);
-  background: var(--bg1);
-  box-shadow: 0 10px 28px color-mix(in srgb, #000 30%, transparent);
+  border-radius: 0.5rem;
+  border: 1px solid var(--glass-edge);
+  background: color-mix(in srgb, var(--glass) 85%, transparent);
+  backdrop-filter: blur(24px) saturate(1.55);
+  -webkit-backdrop-filter: blur(24px) saturate(1.55);
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    0 12px 32px var(--glass-shadow);
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
@@ -1084,8 +1261,9 @@ html[data-theme="light"] .svn-path.tag .svn-rel {
   text-align: center;
   color: var(--muted);
   padding: 1.5rem 0.75rem;
-  border: 1px dashed var(--line);
+  border: 1px dashed var(--glass-edge);
   border-radius: var(--radius);
+  background: color-mix(in srgb, var(--glass) 35%, transparent);
   font-size: 0.9375rem;
 }
 
@@ -1094,7 +1272,7 @@ html[data-theme="light"] .svn-path.tag .svn-rel {
 }
 
 @media (max-width: 640px) {
-  .top {
+  .toolbar {
     flex-direction: column;
     align-items: stretch;
   }

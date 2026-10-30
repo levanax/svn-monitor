@@ -45,12 +45,15 @@ fn default_theme() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub poll_interval_secs: u64,
+    /// 兼容旧配置；运行时固定为 true（界面不再提供开关）
+    #[serde(default = "default_true")]
     pub notify_enabled: bool,
+    /// 兼容旧配置；运行时固定为 true（界面不再提供开关）
     #[serde(default = "default_true")]
     pub pause_when_locked: bool,
     #[serde(default = "default_false")]
     pub autostart: bool,
-    /// system | light | dark
+    /// system | light | dark | dawn | sky | lilac | mint | dusk | noir
     #[serde(default = "default_theme")]
     pub theme: String,
     #[serde(default)]
@@ -74,7 +77,9 @@ impl Default for AppConfig {
 
 pub fn normalize_theme(theme: &str) -> String {
     match theme {
-        "light" | "dark" | "system" => theme.to_string(),
+        "system" | "light" | "dark" | "dawn" | "sky" | "lilac" | "mint" | "dusk" | "noir" => {
+            theme.to_string()
+        }
         _ => default_theme(),
     }
 }
@@ -94,6 +99,8 @@ pub fn config_path() -> PathBuf {
 /// Ensure ungrouped exists, every project points at a known group, and sort_order is dense per group.
 pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.theme = normalize_theme(&cfg.theme);
+    cfg.notify_enabled = true;
+    cfg.pause_when_locked = true;
     if !cfg.groups.iter().any(|g| g.id == UNGROUPED_ID) {
         cfg.groups.insert(0, default_ungrouped_group());
     }
@@ -201,7 +208,7 @@ mod tests {
             notify_enabled: true,
             pause_when_locked: true,
             autostart: false,
-            theme: "system".into(),
+            theme: "dawn".into(),
             groups: vec![GroupConfig {
                 id: "g1".into(),
                 name: "A".into(),
@@ -230,5 +237,14 @@ mod tests {
         assert!(!n.projects[0].mute_notify);
         assert!(n.pause_when_locked);
         assert_eq!(n.theme, "system");
+    }
+
+    #[test]
+    fn normalize_theme_keeps_system_light_dark() {
+        assert_eq!(normalize_theme("system"), "system");
+        assert_eq!(normalize_theme("light"), "light");
+        assert_eq!(normalize_theme("dark"), "dark");
+        assert_eq!(normalize_theme("dawn"), "dawn");
+        assert_eq!(normalize_theme("nope"), "system");
     }
 }

@@ -8,48 +8,38 @@
   </head>
   <body>
     <div id="app">
-      <header class="top">
-        <div class="brand">
-          <span class="logo" aria-hidden="true"></span>
-          <div>
-            <h1>SVN Monitor</h1>
-            <p class="sub">多工作副本轮询 · 有更新即提醒</p>
-          </div>
-        </div>
-        <div class="top-actions">
+      <header class="toolbar" aria-label="操作与设置">
+        <div class="toolbar-actions">
           <button type="button" id="btn-add" class="btn primary btn-add">＋ 添加目录</button>
           <button type="button" id="btn-add-group" class="btn ghost">新建分组</button>
           <button type="button" id="btn-refresh" class="btn ghost">全部刷新</button>
         </div>
+        <div class="toolbar-settings">
+          <label class="field">
+            <span>间隔(分钟)</span>
+            <input type="number" id="interval" min="1" max="120" step="1" />
+          </label>
+          <label class="check">
+            <input type="checkbox" id="autostart" />
+            <span>开机启动</span>
+          </label>
+          <label class="field">
+            <span>主题</span>
+            <select id="theme">
+              <option value="system">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+              <option value="dawn">晨曦</option>
+              <option value="sky">晴空</option>
+              <option value="lilac">丁香</option>
+              <option value="mint">薄荷</option>
+              <option value="dusk">暮色</option>
+              <option value="noir">静夜</option>
+            </select>
+          </label>
+          <p id="status-line" class="status-line" role="status"></p>
+        </div>
       </header>
-
-      <section class="settings" aria-label="轮询设置">
-        <label class="field">
-          <span>间隔(分钟)</span>
-          <input type="number" id="interval" min="1" max="120" step="1" />
-        </label>
-        <label class="check">
-          <input type="checkbox" id="notify-enabled" checked />
-          <span>系统通知</span>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="pause-locked" checked />
-          <span>锁屏暂停</span>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="autostart" />
-          <span>开机启动</span>
-        </label>
-        <label class="field">
-          <span>主题</span>
-          <select id="theme">
-            <option value="system">跟随系统</option>
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-          </select>
-        </label>
-        <p id="status-line" class="status-line" role="status"></p>
-      </section>
 
       <main>
         <div id="project-list" class="project-list" aria-live="polite"></div>

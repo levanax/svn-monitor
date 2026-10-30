@@ -11,7 +11,7 @@ test.beforeAll(() => {
 
 test("分组展示与紧凑操作", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "SVN Monitor" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "SVN Monitor" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /添加目录/ })).toBeVisible();
   await expect(page.getByText("间隔(分钟)")).toBeVisible();
   await expect(page.locator("#interval")).toHaveValue("5");
@@ -24,14 +24,38 @@ test("分组展示与紧凑操作", async ({ page }) => {
   );
   await expect(page.locator(".card:has-text('mobile-branch') .svn-path.branch")).toBeVisible();
   await expect(page.getByText("有更新").first()).toBeVisible();
-  await expect(page.locator("#pause-locked")).toBeVisible();
+  await expect(page.locator("#notify-enabled")).toHaveCount(0);
+  await expect(page.locator("#pause-locked")).toHaveCount(0);
   await expect(page.locator("#autostart")).toBeVisible();
   await expect(page.locator("#theme")).toBeVisible();
+  await expect(page.locator("#theme")).toHaveValue("system");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-pref", "system");
+  await expect(page.locator("#theme option[value='light']")).toHaveCount(1);
+  await expect(page.locator("#theme option[value='dark']")).toHaveCount(1);
   await page.locator("#theme").selectOption("light");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("html")).toHaveAttribute("data-scheme", "light");
+  await expect(page.locator("#theme option").first()).toHaveCSS("color", "rgb(31, 45, 68)");
+  await expect(page.locator("#theme option").first()).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
   await page.locator("#theme").selectOption("dark");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.locator("#theme").selectOption("system");
+  await expect(page.locator("html")).toHaveAttribute("data-scheme", "dark");
+  await expect(page.locator("#theme option").first()).toHaveCSS("color", "rgb(232, 236, 248)");
+  await expect(page.locator("#theme option").first()).toHaveCSS(
+    "background-color",
+    "rgb(26, 30, 40)",
+  );
+  await page.locator("#theme").selectOption("sky");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "sky");
+  await expect(page.locator("html")).toHaveAttribute("data-scheme", "light");
+  await page.locator("#theme").selectOption("dusk");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dusk");
+  await expect(page.locator("html")).toHaveAttribute("data-scheme", "dark");
+  await page.locator("#theme").selectOption("dawn");
+  await expect(page.locator("#theme option").first()).toHaveCSS("color", "rgb(31, 45, 68)");
   await expect(page.locator("#default-group")).toHaveCount(0);
   // Trello 横向列
   await expect(page.locator(".project-list")).toHaveCSS("flex-direction", "row");

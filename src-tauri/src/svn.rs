@@ -289,7 +289,8 @@ pub fn query_revisions(wc: &Path) -> Result<SvnCheck, SvnError> {
     let (behind, against) = parse_status_u(&status_out);
 
     let remote = if behind {
-        against.unwrap_or(local).max(local)
+        // against 解析失败时至少保证 > local，避免通知去重把「首次落后」当成已提醒过
+        against.unwrap_or(local.saturating_add(1)).max(local)
     } else {
         // 已同步：展示上与本地一致，避免「远端数字更大却无更新」
         local

@@ -23,32 +23,71 @@ const listEl = document.querySelector<HTMLDivElement>("#project-list")!;
 const emptyEl = document.querySelector<HTMLParagraphElement>("#empty")!;
 const statusLine = document.querySelector<HTMLParagraphElement>("#status-line")!;
 const intervalInput = document.querySelector<HTMLInputElement>("#interval")!;
-const notifyInput = document.querySelector<HTMLInputElement>("#notify-enabled")!;
-const pauseLockedInput = document.querySelector<HTMLInputElement>("#pause-locked")!;
 const autostartInput = document.querySelector<HTMLInputElement>("#autostart")!;
 const themeSelect = document.querySelector<HTMLSelectElement>("#theme")!;
 
-type ThemePreference = "system" | "light" | "dark";
-let themePreference: ThemePreference = "system";
-let systemThemeMql: MediaQueryList | null = null;
+const THEMES = [
+  "system",
+  "light",
+  "dark",
+  "dawn",
+  "sky",
+  "lilac",
+  "mint",
+  "dusk",
+  "noir",
+] as const;
+type ThemePreference = (typeof THEMES)[number];
 
-function resolveTheme(pref: ThemePreference): "light" | "dark" {
-  if (pref === "light" || pref === "dark") return pref;
+let currentThemePref: ThemePreference = "system";
+let systemSchemeMql: MediaQueryList | null = null;
+
+function isTheme(v: string): v is ThemePreference {
+  return (THEMES as readonly string[]).includes(v);
+}
+
+function systemScheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function applyTheme(pref: ThemePreference) {
-  themePreference = pref;
-  document.documentElement.dataset.theme = resolveTheme(pref);
+function themeScheme(pref: ThemePreference): "light" | "dark" {
+  if (pref === "system") return systemScheme();
+  if (pref === "dark" || pref === "dusk" || pref === "noir") return "dark";
+  return "light";
 }
 
-function bindSystemThemeListener() {
-  if (!systemThemeMql) {
-    systemThemeMql = window.matchMedia("(prefers-color-scheme: dark)");
-    systemThemeMql.addEventListener("change", () => {
-      if (themePreference === "system") applyTheme("system");
-    });
+/** system 解析为 light/dark，供 CSS 变量选择 */
+function resolvedTheme(pref: ThemePreference): string {
+  if (pref === "system") return systemScheme();
+  return pref;
+}
+
+function normalizeThemePref(raw: string | undefined | null): ThemePreference {
+  if (!raw) return "system";
+  if (isTheme(raw)) return raw;
+  return "system";
+}
+
+function onSystemSchemeChange() {
+  if (currentThemePref === "system") applyTheme("system");
+}
+
+function bindSystemSchemeListener() {
+  if (systemSchemeMql) {
+    systemSchemeMql.removeEventListener("change", onSystemSchemeChange);
   }
+  systemSchemeMql = window.matchMedia("(prefers-color-scheme: dark)");
+  systemSchemeMql.addEventListener("change", onSystemSchemeChange);
+}
+
+function applyTheme(pref: ThemePreference) {
+  currentThemePref = pref;
+  const resolved = resolvedTheme(pref);
+  const scheme = themeScheme(pref);
+  // data-theme：用户选择；视觉用 resolved（system→light/dark）
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themePref = pref;
+  document.documentElement.dataset.scheme = scheme;
 }
 
 let projects: ProjectState[] = [];
@@ -60,7 +99,7 @@ let statusFadeTimer: ReturnType<typeof setTimeout> | null = null;
 function setStatus(msg: string) {
   const apply = () => {
     statusLine.textContent = msg;
-    statusLine.classList.toggle("locked", sessionLocked && pauseLockedInput.checked);
+    statusLine.classList.toggle("locked", sessionLocked);
     statusLine.classList.remove("is-updating");
   };
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -696,14 +735,9 @@ function secsToMinutes(secs: number): number {
 async function loadConfig() {
   const cfg = await invoke<AppConfig>("get_config");
   intervalInput.value = String(secsToMinutes(cfg.poll_interval_secs));
-  notifyInput.checked = cfg.notify_enabled;
-  pauseLockedInput.checked = cfg.pause_when_locked;
   autostartInput.checked = !!cfg.autostart;
-  const theme = (cfg.theme === "light" || cfg.theme === "dark" || cfg.theme === "system"
-    ? cfg.theme
-    : "system") as ThemePreference;
+  const theme = normalizeThemePref(cfg.theme);
   themeSelect.value = theme;
-  bindSystemThemeListener();
   applyTheme(theme);
   groups = cfg.groups?.length ? cfg.groups : await invoke<GroupConfig[]>("list_groups");
 }
@@ -856,12 +890,10 @@ async function persistSettings(quiet = false) {
   try {
     await invoke("save_settings", {
       pollIntervalSecs: secs,
-      notifyEnabled: notifyInput.checked,
-      pauseWhenLocked: pauseLockedInput.checked,
       autostart: autostartInput.checked,
       theme: themeSelect.value,
     });
-    if (notifyInput.checked) await ensureNotifyPermission();
+    await ensureNotifyPermission();
     if (!quiet) setStatus("已保存");
   } catch (e) {
     setStatus(String(e));
@@ -877,22 +909,19 @@ function schedulePersistSettings() {
 
 intervalInput.addEventListener("change", () => void persistSettings());
 intervalInput.addEventListener("input", () => schedulePersistSettings());
-notifyInput.addEventListener("change", () => void persistSettings());
-pauseLockedInput.addEventListener("change", () => void persistSettings());
 autostartInput.addEventListener("change", () => void persistSettings());
 themeSelect.addEventListener("change", () => {
-  const pref = themeSelect.value as ThemePreference;
-  applyTheme(pref);
+  applyTheme(normalizeThemePref(themeSelect.value));
   void persistSettings();
 });
 
 async function boot() {
   const appEl = document.querySelector("#app");
-  bindSystemThemeListener();
+  bindSystemSchemeListener();
   applyTheme("system");
   await loadConfig();
   await refreshAll();
-  if (!useMock && notifyInput.checked) await ensureNotifyPermission();
+  if (!useMock) await ensureNotifyPermission();
   await bindExplorerFileDrop();
 
   if (!useMock) {
@@ -917,17 +946,11 @@ async function boot() {
 
     await listen<boolean>("session-lock", (ev) => {
       sessionLocked = ev.payload;
-      setStatus(sessionLocked && pauseLockedInput.checked ? "锁屏暂停" : "已解锁");
+      setStatus(sessionLocked ? "锁屏暂停" : "已解锁");
     });
   }
 
-  setStatus(
-    useMock
-      ? "演示模式"
-      : sessionLocked && pauseLockedInput.checked
-        ? "锁屏暂停"
-        : "就绪",
-  );
+  setStatus(useMock ? "演示模式" : sessionLocked ? "锁屏暂停" : "就绪");
 
   // 下一帧再显示，避免首屏闪一下未排版内容
   requestAnimationFrame(() => {

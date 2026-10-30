@@ -21,7 +21,17 @@ export interface ProjectState {
   last_checked: string | null;
 }
 
-export type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode =
+  | "system"
+  | "light"
+  | "dark"
+  | "dawn"
+  | "sky"
+  | "lilac"
+  | "mint"
+  | "dusk"
+  | "noir"
+  | string;
 
 export interface AppConfig {
   poll_interval_secs: number;

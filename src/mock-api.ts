@@ -202,8 +202,8 @@ export function createMockApi() {
         }
         case "save_settings": {
           cfg.poll_interval_secs = Number(args?.pollIntervalSecs ?? cfg.poll_interval_secs);
-          cfg.notify_enabled = Boolean(args?.notifyEnabled);
-          cfg.pause_when_locked = Boolean(args?.pauseWhenLocked);
+          cfg.notify_enabled = true;
+          cfg.pause_when_locked = true;
           cfg.autostart = Boolean(args?.autostart);
           cfg.theme = String(args?.theme ?? cfg.theme);
           return undefined as T;

@@ -105,8 +105,8 @@ pub fn set_session_locked(app: &AppHandle, locked: bool) {
 }
 
 fn polling_paused(state: &AppState) -> bool {
-    let guard = state.inner.lock();
-    guard.config.pause_when_locked && guard.session_locked
+    // 锁屏时始终暂停轮询（不再提供开关）
+    state.inner.lock().session_locked
 }
 
 fn persist(state: &AppState) -> Result<(), String> {
@@ -126,6 +126,22 @@ fn truncate_notify_text(s: &str, max_chars: usize) -> String {
     let mut out: String = s.chars().take(max_chars.saturating_sub(1)).collect();
     out.push('…');
     out
+}
+
+/// 每个更高的远端 revision 提醒一次（窗口是否在前台无关）。
+fn should_notify_for_remote(
+    notify_on: bool,
+    muted: bool,
+    already: Option<u64>,
+    remote: u64,
+) -> bool {
+    if !notify_on || muted {
+        return false;
+    }
+    match already {
+        Some(prev) => remote > prev,
+        None => true,
+    }
 }
 
 /// 返回是否成功发出系统通知。失败时不记「已通知」，以便下次轮询重试。
@@ -166,38 +182,29 @@ fn show_update_notification(app: &AppHandle, name: &str, local: u64, remote: u64
 
 #[cfg(windows)]
 fn show_windows_toast(app: &AppHandle, title: &str, line1: &str, line2: &str) -> bool {
-    use tauri_winrt_notification::{Duration, Toast};
+    use tauri_winrt_notification::{Duration, Sound, Toast};
 
     let line1 = truncate_notify_text(line1, 120);
     let line2 = truncate_notify_text(line2, 120);
     let identifier = app.config().identifier.clone();
 
-    // 已安装包可用 AppUserModelID；从 target/release 直接运行时改用 PowerShell AUMID
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.display().to_string()))
-        .unwrap_or_default();
-    let from_cargo_target = exe_dir.ends_with(r"\target\debug")
-        || exe_dir.ends_with(r"\target\release")
-        || exe_dir.ends_with("/target/debug")
-        || exe_dir.ends_with("/target/release");
-
-    let app_ids: Vec<&str> = if from_cargo_target {
-        vec![Toast::POWERSHELL_APP_ID, identifier.as_str()]
-    } else {
-        vec![identifier.as_str(), Toast::POWERSHELL_APP_ID]
-    };
+    // PowerShell AUMID 不依赖安装快捷方式，前台/关窗都能弹出；再尝试应用自身 AUMID 以显示「SVN Monitor」
+    let app_ids: Vec<&str> = vec![Toast::POWERSHELL_APP_ID, identifier.as_str()];
 
     for app_id in app_ids {
         let mut toast = Toast::new(app_id)
             .title(title)
             .text1(&line1)
-            .duration(Duration::Long);
+            .duration(Duration::Long)
+            .sound(Some(Sound::Default));
         if !line2.is_empty() {
             toast = toast.text2(&line2);
         }
         match toast.show() {
-            Ok(()) => return true,
+            Ok(()) => {
+                eprintln!("toast shown via {app_id}");
+                return true;
+            }
             Err(e) => eprintln!("toast via {app_id} failed: {e}"),
         }
     }
@@ -240,10 +247,9 @@ fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState
             if revs.behind {
                 proj.status = ProjectStatus::Behind;
                 let muted = proj.mute_notify;
-                let notify_on = guard.config.notify_enabled;
                 let already = guard.notified_remote.get(id).copied();
-                // 全局「系统通知」开启且未对本项目忽略时，必须发系统通知
-                let should_notify = notify_on && !muted && already != Some(revs.remote);
+                // 系统通知始终开启；每个更高的远端 revision 提醒一次
+                let should_notify = should_notify_for_remote(true, muted, already, revs.remote);
                 if should_notify {
                     drop(guard);
                     let log_summary = svn::fetch_incoming_log_summary(
@@ -255,6 +261,11 @@ fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState
                     if show_update_notification(app, &name, revs.local, revs.remote, &log_summary) {
                         let mut guard = state.inner.lock();
                         guard.notified_remote.insert(id.to_string(), revs.remote);
+                    } else {
+                        eprintln!(
+                            "notify failed for {name} r{}→r{}; will retry next poll",
+                            revs.local, revs.remote
+                        );
                     }
                     let payload = serde_json::json!({
                         "name": name,
@@ -270,6 +281,7 @@ fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState
                 }
             } else {
                 proj.status = ProjectStatus::UpToDate;
+                // 已同步：把水位记到当前本地，之后只有更高远端 revision 才再提醒
                 guard.notified_remote.insert(id.to_string(), revs.remote);
             }
         }
@@ -610,8 +622,6 @@ fn save_settings(
     app: AppHandle,
     state: State<'_, AppState>,
     poll_interval_secs: u64,
-    notify_enabled: bool,
-    pause_when_locked: bool,
     autostart: bool,
     theme: String,
 ) -> Result<(), String> {
@@ -621,8 +631,9 @@ fn save_settings(
     {
         let mut guard = state.inner.lock();
         guard.config.poll_interval_secs = poll_interval_secs;
-        guard.config.notify_enabled = notify_enabled;
-        guard.config.pause_when_locked = pause_when_locked;
+        // 系统通知 / 锁屏暂停：产品固定启用，不再由设置项控制
+        guard.config.notify_enabled = true;
+        guard.config.pause_when_locked = true;
         guard.config.autostart = autostart;
         guard.config.theme = config::normalize_theme(&theme);
     }
@@ -772,8 +783,7 @@ fn open_tortoise_log(state: State<'_, AppState>, id: String) -> Result<(), Strin
 
 #[tauri::command]
 fn is_session_locked(state: State<'_, AppState>) -> bool {
-    let guard = state.inner.lock();
-    guard.config.pause_when_locked && guard.session_locked
+    state.inner.lock().session_locked
 }
 
 /// Windows：关闭后重建 WebView 时，系统偶发把光标卡在 IDC_APPSTARTING（loading）。
@@ -848,6 +858,8 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let _tray = TrayIconBuilder::new()
         .menu(&menu)
+        // 左键打开主界面；右键才弹出菜单
+        .show_menu_on_left_click(false)
         .tooltip("SVN Monitor")
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -943,4 +955,26 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod notify_tests {
+    use super::should_notify_for_remote;
+
+    #[test]
+    fn notifies_first_behind_when_never_notified() {
+        assert!(should_notify_for_remote(true, false, None, 101));
+    }
+
+    #[test]
+    fn notifies_only_when_remote_increases() {
+        assert!(!should_notify_for_remote(true, false, Some(101), 101));
+        assert!(should_notify_for_remote(true, false, Some(101), 102));
+    }
+
+    #[test]
+    fn respects_global_and_per_project_mute() {
+        assert!(!should_notify_for_remote(false, false, None, 101));
+        assert!(!should_notify_for_remote(true, true, None, 101));
+    }
 }
