@@ -69,6 +69,17 @@
       </form>
     </dialog>
 
+    <dialog id="confirm-dialog" class="group-picker confirm-dialog">
+      <form method="dialog" id="confirm-form">
+        <h3 id="confirm-title">确认</h3>
+        <p id="confirm-message" class="group-picker-hint"></p>
+        <div class="group-picker-actions">
+          <button type="submit" value="cancel" class="btn ghost" id="confirm-cancel">取消</button>
+          <button type="submit" value="ok" class="btn danger" id="confirm-ok">确定</button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

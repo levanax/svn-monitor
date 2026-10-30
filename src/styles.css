@@ -277,6 +277,22 @@ h1 {
     0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
+@keyframes hint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+  40% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+}
+
+#btn-add-group.hint-pulse {
+  animation: hint-pulse 0.7s var(--ease-out) 2;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  color: var(--ok-text);
+}
+
 .btn.btn-add:hover {
   filter: brightness(1.08);
 }
@@ -296,6 +312,14 @@ h1 {
   background: transparent;
   border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
   color: var(--danger-text);
+}
+
+.confirm-dialog form {
+  gap: 0.75rem;
+}
+
+.confirm-dialog #confirm-message {
+  white-space: pre-wrap;
 }
 
 .btn.tiny {

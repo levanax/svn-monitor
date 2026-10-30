@@ -88,25 +88,59 @@ function badgeFor(p: ProjectState): { cls: string; text: string } {
   }
 }
 
+function customGroups(): GroupConfig[] {
+  return groups.filter((g) => g.id !== "ungrouped");
+}
+
+function hasCustomGroups(): boolean {
+  return customGroups().length > 0;
+}
+
+/** 无自定义分组时提醒先建组（「未分组」不算）。 */
+function remindCreateGroup(reason: string): void {
+  setStatus(reason);
+  const btn = document.querySelector<HTMLButtonElement>("#btn-add-group");
+  btn?.classList.add("hint-pulse");
+  window.setTimeout(() => btn?.classList.remove("hint-pulse"), 1600);
+}
+
 async function pickGroupId(currentId: string): Promise<string | null> {
-  const lines = groups.map((g, i) => `${i + 1}. ${g.name}`).join("\n");
-  const cur = groups.find((g) => g.id === currentId)?.name ?? "";
-  const answer = prompt(`移到分组（输入序号或名称）\n${lines}`, cur);
-  if (answer == null) return null;
-  const trimmed = answer.trim();
-  if (!trimmed) return null;
-  const byIndex = Number(trimmed);
-  if (Number.isInteger(byIndex) && byIndex >= 1 && byIndex <= groups.length) {
-    return groups[byIndex - 1].id;
-  }
-  const byName = groups.find((g) => g.name === trimmed);
-  return byName?.id ?? null;
+  const title = groupPicker.querySelector("h3");
+  if (title) title.textContent = "移到分组";
+  groupPickerHint.textContent = "请点选目标分组（可含「未分组」）。";
+  groupPickerList.innerHTML = groups
+    .map(
+      (g) => `
+      <label class="group-picker-item">
+        <input type="radio" name="group" value="${escapeAttr(g.id)}" ${
+          g.id === currentId ? "checked" : ""
+        } />
+        <span>${escapeHtml(g.name)}</span>
+      </label>`,
+    )
+    .join("");
+
+  return new Promise((resolve) => {
+    const onClose = () => {
+      groupPicker.removeEventListener("close", onClose);
+      if (groupPicker.returnValue !== "ok") {
+        resolve(null);
+        return;
+      }
+      const picked = groupPickerList.querySelector<HTMLInputElement>('input[name="group"]:checked');
+      resolve(picked?.value ?? null);
+    };
+    groupPicker.addEventListener("close", onClose);
+    if (typeof groupPicker.showModal === "function") groupPicker.showModal();
+    else onClose();
+  });
 }
 
 function render() {
   listEl.innerHTML = "";
   listEl.classList.toggle("board-enter", boardEnterPending);
-  emptyEl.classList.toggle("hidden", projects.length > 0);
+  // 有自定义分组时即使还没项目也显示列；仅真正空板才露底栏提示
+  emptyEl.classList.toggle("hidden", projects.length > 0 || hasCustomGroups());
 
   const byGroup = new Map<string, ProjectState[]>();
   for (const g of groups) byGroup.set(g.id, []);
@@ -121,9 +155,8 @@ function render() {
 
   for (const g of groups) {
     const items = byGroup.get(g.id) ?? [];
-    // 未分组为空时隐藏；自定义空分组仍显示便于管理
+    // 未分组为空时隐藏；自定义分组（含空组）始终显示
     if (g.id === "ungrouped" && items.length === 0) continue;
-    if (items.length === 0 && g.id !== "ungrouped" && projects.length === 0) continue;
 
     const block = document.createElement("section");
     block.className = "group-block";
@@ -460,12 +493,38 @@ const groupPicker = document.querySelector<HTMLDialogElement>("#group-picker")!;
 const groupPickerList = document.querySelector<HTMLDivElement>("#group-picker-list")!;
 const groupPickerHint = document.querySelector<HTMLParagraphElement>("#group-picker-hint")!;
 const groupPickerForm = document.querySelector<HTMLFormElement>("#group-picker-form")!;
+const confirmDialog = document.querySelector<HTMLDialogElement>("#confirm-dialog")!;
+const confirmTitle = document.querySelector<HTMLHeadingElement>("#confirm-title")!;
+const confirmMessage = document.querySelector<HTMLParagraphElement>("#confirm-message")!;
+const confirmOkBtn = document.querySelector<HTMLButtonElement>("#confirm-ok")!;
+
+/** WebView 里 window.confirm 常被推迟到后续才弹出；用应用内 dialog 保证先问再做。 */
+function askConfirm(opts: {
+  title?: string;
+  message: string;
+  okText?: string;
+}): Promise<boolean> {
+  confirmTitle.textContent = opts.title ?? "确认";
+  confirmMessage.textContent = opts.message;
+  confirmOkBtn.textContent = opts.okText ?? "确定";
+  return new Promise((resolve) => {
+    const onClose = () => {
+      confirmDialog.removeEventListener("close", onClose);
+      resolve(confirmDialog.returnValue === "ok");
+    };
+    confirmDialog.addEventListener("close", onClose);
+    if (typeof confirmDialog.showModal === "function") confirmDialog.showModal();
+    else resolve(false);
+  });
+}
 
 function pickGroupsMulti(opts?: {
   titleHint?: string;
   preselected?: string[];
 }): Promise<string[] | null> {
   const pre = new Set(opts?.preselected ?? []);
+  const title = groupPicker.querySelector("h3");
+  if (title) title.textContent = "选择保存到的分组";
   groupPickerHint.textContent = opts?.titleHint ?? "请勾选至少一个分组（可多选；「未分组」默认不勾选）。";
   groupPickerList.innerHTML = groups
     .map(
@@ -573,11 +632,30 @@ async function bindExplorerFileDrop() {
       return;
     }
     if (payload.type === "drop") {
-      const { x, y } = cssPointFromPhysical(payload.position);
-      const groupId = groupIdAtCssPoint(x, y) ?? "ungrouped";
       clearFileDropTargets();
       const paths = payload.paths.filter(Boolean);
       if (!paths.length) return;
+      if (!hasCustomGroups()) {
+        remindCreateGroup("还没有分组，请先点击「新建分组」后再拖入项目");
+        return;
+      }
+      const { x, y } = cssPointFromPhysical(payload.position);
+      const groupId = groupIdAtCssPoint(x, y);
+      if (!groupId || groupId === "ungrouped") {
+        // 有自定义分组时：落到空白/未分组也弹出选择，避免误入未分组
+        void (async () => {
+          const ids = await pickGroupsMulti({
+            titleHint: `将添加 ${paths.length} 个目录，请勾选目标分组`,
+            preselected: [],
+          });
+          if (!ids?.length) {
+            setStatus("已取消");
+            return;
+          }
+          await addPathsToGroups(paths, ids);
+        })();
+        return;
+      }
       void addPathsToGroups(paths, [groupId]);
     }
   });
@@ -645,7 +723,12 @@ async function onGroupAction(g: GroupConfig, act: string) {
       await refreshAll();
       setStatus("已重命名");
     } else if (act === "remove") {
-      if (!confirm(`删除分组「${g.name}」？组内项目将移到「未分组」。`)) return;
+      const ok = await askConfirm({
+        title: "删除分组",
+        message: `确定删除分组「${g.name}」？\n组内项目会移到「未分组」，不会删除本地文件。`,
+        okText: "删除分组",
+      });
+      if (!ok) return;
       await invoke("remove_group", { id: g.id });
       await refreshAll();
       setStatus("已删组");
@@ -690,7 +773,12 @@ async function onAction(p: ProjectState, act: string) {
       await invoke("open_tortoise_log", { id: p.id });
       setStatus(useMock ? "演示：日志" : `日志 ${p.name}`);
     } else if (act === "remove") {
-      if (!confirm(`移除监控「${p.name}」？不会删除本地文件。`)) return;
+      const ok = await askConfirm({
+        title: "移除监控",
+        message: `确定移除监控「${p.name}」？\n只会从列表去掉，不会删除本地文件。`,
+        okText: "移除",
+      });
+      if (!ok) return;
       await invoke("remove_project", { id: p.id });
       await refreshAll();
       setStatus(`已移除 ${p.name}`);
@@ -727,6 +815,10 @@ document.querySelector("#btn-add")!.addEventListener("click", async () => {
       paths = Array.isArray(picked) ? picked : [picked];
     }
     if (!paths.length) return;
+    if (!hasCustomGroups()) {
+      remindCreateGroup("还没有分组，请先点击「新建分组」后再添加目录");
+      return;
+    }
     const groupIds = await pickGroupsMulti({
       titleHint: `将添加 ${paths.length} 个目录，请勾选保存到的分组（可多选，「未分组」默认不选）`,
       preselected: [],

@@ -73,6 +73,9 @@ test("分组展示与紧凑操作", async ({ page }) => {
   page.once("dialog", (d) => d.accept("API"));
   await page.locator("#btn-add-group").click();
   await expect(page.getByText("已建组 API")).toBeVisible();
+  // 空分组也要显示列
+  await expect(page.getByRole("heading", { name: "API 0" })).toBeVisible();
+  await expect(page.locator('.group-block:has(.group-title:has-text("API")) .card-empty')).toBeVisible();
 
   const syncedCard = page.locator('.card:has-text("mobile-branch")');
   const behindCard = page.locator('.card:has-text("mobile-trunk")');
@@ -84,9 +87,12 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(behindCard.locator('button[data-act="update"]')).toHaveText("更新");
   await expect(syncedCard.locator('button[data-act="move"]')).toBeHidden();
 
-  page.once("dialog", (d) => d.accept("API"));
   await page.locator('.card:has-text("tools") .more-toggle').click();
   await page.locator('.card:has-text("tools") button[data-act="move"]').click();
+  await expect(page.locator("#group-picker")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "移到分组" })).toBeVisible();
+  await page.locator('#group-picker-list input[value="g-mobile"]').check();
+  await page.locator("#group-picker-ok").click();
   await expect(page.getByText("已移动 tools")).toBeVisible();
   await expect(page.getByRole("heading", { name: /未分组/ })).toHaveCount(0);
 
@@ -113,6 +119,14 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await behindCard.locator('button[data-act="mute"]').click();
   await expect(page.getByText("已忽略 mobile-trunk")).toBeVisible();
   await expect(page.getByText("已忽略提醒")).toBeVisible();
+
+  // 确认框须先于删除弹出（不用 window.confirm）
+  await page.locator('.group-block:has(.group-title:has-text("API")) .more-toggle').click();
+  await page.locator('.group-block:has(.group-title:has-text("API")) button[data-gact="remove"]').click();
+  await expect(page.locator("#confirm-dialog")).toBeVisible();
+  await expect(page.locator("#confirm-title")).toHaveText("删除分组");
+  await page.locator("#confirm-cancel").click();
+  await expect(page.getByRole("heading", { name: "API 0" })).toBeVisible();
 
   await page.screenshot({ path: path.join(outDir, "ui-after-actions.png"), fullPage: true });
 });
