@@ -8,42 +8,74 @@
   </head>
   <body>
     <div id="app">
-      <header class="toolbar" aria-label="操作与设置">
-        <div class="toolbar-actions">
-          <button type="button" id="btn-add" class="btn primary btn-add">＋ 添加目录</button>
-          <button type="button" id="btn-add-group" class="btn ghost">新建分组</button>
-          <button type="button" id="btn-refresh" class="btn ghost">全部刷新</button>
+      <header class="titlebar" aria-label="标题栏">
+        <div class="titlebar-brand" data-tauri-drag-region>
+          <img class="titlebar-icon" src="/app-icon.png" width="16" height="16" alt="" data-tauri-drag-region />
+          <span class="titlebar-app" data-tauri-drag-region>SVN Monitor</span>
         </div>
-        <div class="toolbar-settings">
-          <label class="field">
-            <span>间隔(分钟)</span>
-            <input type="number" id="interval" min="1" max="120" step="1" />
-          </label>
-          <label class="check">
-            <input type="checkbox" id="autostart" />
-            <span>开机启动</span>
-          </label>
-          <label class="field">
-            <span>主题</span>
-            <select id="theme">
-              <option value="system">跟随系统</option>
-              <option value="light">浅色</option>
-              <option value="dark">深色</option>
-              <option value="dawn">晨曦</option>
-              <option value="sky">晴空</option>
-              <option value="lilac">丁香</option>
-              <option value="mint">薄荷</option>
-              <option value="dusk">暮色</option>
-              <option value="noir">静夜</option>
-            </select>
-          </label>
-          <p id="status-line" class="status-line" role="status"></p>
+
+        <nav class="menubar" aria-label="菜单">
+          <div class="menubar-item">
+            <button type="button" class="menubar-btn" id="menu-ops-btn" aria-haspopup="true" aria-expanded="false">
+              操作
+            </button>
+            <div class="menubar-panel" id="menu-ops" role="menu" hidden>
+              <button type="button" class="menubar-cmd" role="menuitem" id="btn-add">添加目录</button>
+              <button type="button" class="menubar-cmd" role="menuitem" id="btn-add-group">新建分组</button>
+              <button type="button" class="menubar-cmd" role="menuitem" id="btn-refresh">全部刷新</button>
+            </div>
+          </div>
+          <div class="menubar-item">
+            <button type="button" class="menubar-btn" id="menu-settings-btn" aria-haspopup="true" aria-expanded="false">
+              设置
+            </button>
+            <div class="menubar-panel menubar-panel-settings" id="menu-settings" role="menu" hidden>
+              <label class="field menubar-field">
+                <span>间隔(分钟)</span>
+                <input type="number" id="interval" min="1" max="120" step="1" />
+              </label>
+              <label class="check menubar-field">
+                <input type="checkbox" id="autostart" />
+                <span>开机启动</span>
+              </label>
+              <label class="field menubar-field">
+                <span>主题</span>
+                <select id="theme">
+                  <option value="system">跟随系统</option>
+                  <option value="light">浅色</option>
+                  <option value="dark">深色</option>
+                  <option value="dawn">晨曦</option>
+                  <option value="sky">晴空</option>
+                  <option value="lilac">丁香</option>
+                  <option value="mint">薄荷</option>
+                  <option value="dusk">暮色</option>
+                  <option value="noir">静夜</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </nav>
+
+        <div class="titlebar-drag" data-tauri-drag-region>
+          <p id="status-line" class="status-line" role="status" data-tauri-drag-region></p>
+        </div>
+
+        <div class="titlebar-controls" aria-label="窗口控制">
+          <button type="button" class="titlebar-btn" id="titlebar-minimize" title="最小化" aria-label="最小化">
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M1 5h8v1H1z"/></svg>
+          </button>
+          <button type="button" class="titlebar-btn" id="titlebar-maximize" title="最大化" aria-label="最大化">
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1" d="M1.5 1.5h7v7h-7z"/></svg>
+          </button>
+          <button type="button" class="titlebar-btn titlebar-btn-close" id="titlebar-close" title="关闭" aria-label="关闭">
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M1.2 1.2l7.6 7.6-.7.7L.5 1.9zm7.6 0L1.2 8.8l.7.7 7.6-7.6z"/></svg>
+          </button>
         </div>
       </header>
 
       <main>
         <div id="project-list" class="project-list" aria-live="polite"></div>
-        <p id="empty" class="empty hidden">还没有监控目录。点击「添加目录」或从资源管理器拖入 SVN 工作副本。</p>
+        <p id="empty" class="empty hidden">还没有监控目录。点击「操作 → 添加目录」或从资源管理器拖入 SVN 工作副本。</p>
       </main>
     </div>
 

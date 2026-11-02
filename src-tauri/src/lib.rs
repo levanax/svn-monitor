@@ -825,6 +825,8 @@ fn notify_ui_ready() {
 
 fn show_main_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
+        // 最小化到任务栏时仅 show/focus 无效，需先 unminimize
+        let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
         reset_busy_cursor();
@@ -836,6 +838,7 @@ fn show_main_window(app: &AppHandle) {
         .inner_size(980.0, 720.0)
         .min_inner_size(720.0, 520.0)
         .resizable(true)
+        .decorations(false)
         .center()
         // dragDropEnabled=true：允许从资源管理器拖文件夹进分组（组内排序改用指针拖拽）
         .build()
@@ -886,6 +889,10 @@ pub fn run() {
     let state = AppState::new();
 
     tauri::Builder::default()
+        // 单实例须最先注册；二次启动时唤起已有主窗（含已销毁后重建）
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())

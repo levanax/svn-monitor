@@ -1,6 +1,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   isPermissionGranted,
@@ -138,9 +139,73 @@ function hasCustomGroups(): boolean {
 /** 无自定义分组时提醒先建组（「未分组」不算）。 */
 function remindCreateGroup(reason: string): void {
   setStatus(reason);
-  const btn = document.querySelector<HTMLButtonElement>("#btn-add-group");
-  btn?.classList.add("hint-pulse");
-  window.setTimeout(() => btn?.classList.remove("hint-pulse"), 1600);
+  const menuBtn = document.querySelector<HTMLButtonElement>("#menu-ops-btn");
+  const item = document.querySelector<HTMLButtonElement>("#btn-add-group");
+  menuBtn?.classList.add("hint-pulse");
+  item?.classList.add("hint-pulse");
+  window.setTimeout(() => {
+    menuBtn?.classList.remove("hint-pulse");
+    item?.classList.remove("hint-pulse");
+  }, 1600);
+}
+
+function closeAllMenus(): void {
+  document.querySelectorAll<HTMLElement>(".menubar-item.open").forEach((el) => {
+    el.classList.remove("open");
+    const btn = el.querySelector<HTMLButtonElement>(".menubar-btn");
+    const panel = el.querySelector<HTMLElement>(".menubar-panel");
+    if (btn) btn.setAttribute("aria-expanded", "false");
+    panel?.setAttribute("hidden", "");
+  });
+}
+
+function setupMenubar(): void {
+  document.querySelectorAll<HTMLElement>(".menubar-item").forEach((item) => {
+    const btn = item.querySelector<HTMLButtonElement>(".menubar-btn");
+    const panel = item.querySelector<HTMLElement>(".menubar-panel");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const willOpen = !item.classList.contains("open");
+      closeAllMenus();
+      if (willOpen) {
+        item.classList.add("open");
+        btn.setAttribute("aria-expanded", "true");
+        panel.removeAttribute("hidden");
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>(".menubar-cmd").forEach((cmd) => {
+    cmd.addEventListener("click", () => closeAllMenus());
+  });
+
+  document.addEventListener("click", (ev) => {
+    const t = ev.target as Node | null;
+    if (t && (t as Element).closest?.(".menubar-item")) return;
+    closeAllMenus();
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeAllMenus();
+  });
+}
+
+function setupTitlebarControls(): void {
+  if (useMock) {
+    document.querySelector(".titlebar-controls")?.classList.add("hidden");
+    return;
+  }
+  const win = getCurrentWindow();
+  document
+    .querySelector("#titlebar-minimize")
+    ?.addEventListener("click", () => void win.minimize());
+  document
+    .querySelector("#titlebar-maximize")
+    ?.addEventListener("click", () => void win.toggleMaximize());
+  document
+    .querySelector("#titlebar-close")
+    ?.addEventListener("click", () => void win.close());
 }
 
 async function pickGroupId(currentId: string): Promise<string | null> {
@@ -478,7 +543,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
     </div>
     <div class="card-actions">
       <button type="button" class="btn ghost tiny" data-act="open" title="在资源管理器中打开">文件夹</button>
-      <button type="button" class="btn ghost tiny" data-act="log" title="TortoiseSVN 日志">日志</button>
+      <button type="button" class="btn ghost tiny" data-act="log" title="TortoiseSVN log">log</button>
       <button type="button" class="btn ghost tiny" data-act="cursor" title="用 Cursor 打开此目录">Cursor</button>
       ${updateBtn}
     </div>
@@ -805,7 +870,7 @@ async function onAction(p: ProjectState, act: string) {
       setStatus(useMock ? "演示：已用 Cursor 打开" : `Cursor 打开 ${p.name}`);
     } else if (act === "log") {
       await invoke("open_tortoise_log", { id: p.id });
-      setStatus(useMock ? "演示：日志" : `日志 ${p.name}`);
+      setStatus(useMock ? "演示：log" : `log ${p.name}`);
     } else if (act === "remove") {
       const ok = await askConfirm({
         title: "移除监控",
@@ -917,6 +982,8 @@ themeSelect.addEventListener("change", () => {
 
 async function boot() {
   const appEl = document.querySelector("#app");
+  setupMenubar();
+  setupTitlebarControls();
   bindSystemSchemeListener();
   applyTheme("system");
   await loadConfig();

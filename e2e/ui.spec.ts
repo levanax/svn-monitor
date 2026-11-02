@@ -104,7 +104,7 @@ test("分组展示与紧凑操作", async ({ page }) => {
   const syncedCard = page.locator('.card:has-text("mobile-branch")');
   const behindCard = page.locator('.card:has-text("mobile-trunk")');
   await expect(syncedCard.locator('button[data-act="open"]')).toHaveText("文件夹");
-  await expect(syncedCard.locator('button[data-act="log"]')).toBeVisible();
+  await expect(syncedCard.locator('button[data-act="log"]')).toHaveText("log");
   await expect(syncedCard.locator('button[data-act="cursor"]')).toHaveText("Cursor");
   await expect(syncedCard.locator(".more-toggle")).toBeVisible();
   await expect(syncedCard.locator('button[data-act="update"]')).toHaveCount(0);
