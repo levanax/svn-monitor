@@ -601,6 +601,11 @@ const confirmDialog = document.querySelector<HTMLDialogElement>("#confirm-dialog
 const confirmTitle = document.querySelector<HTMLHeadingElement>("#confirm-title")!;
 const confirmMessage = document.querySelector<HTMLParagraphElement>("#confirm-message")!;
 const confirmOkBtn = document.querySelector<HTMLButtonElement>("#confirm-ok")!;
+const promptDialog = document.querySelector<HTMLDialogElement>("#prompt-dialog")!;
+const promptTitle = document.querySelector<HTMLHeadingElement>("#prompt-title")!;
+const promptMessage = document.querySelector<HTMLParagraphElement>("#prompt-message")!;
+const promptInput = document.querySelector<HTMLInputElement>("#prompt-input")!;
+const promptOkBtn = document.querySelector<HTMLButtonElement>("#prompt-ok")!;
 
 /** WebView 里 window.confirm 常被推迟到后续才弹出；用应用内 dialog 保证先问再做。 */
 function askConfirm(opts: {
@@ -619,6 +624,44 @@ function askConfirm(opts: {
     confirmDialog.addEventListener("close", onClose);
     if (typeof confirmDialog.showModal === "function") confirmDialog.showModal();
     else resolve(false);
+  });
+}
+
+/** 应用内文本输入（替代 WebView 原生 prompt）。取消或空串返回 null。 */
+function askPrompt(opts: {
+  title?: string;
+  message?: string;
+  defaultValue?: string;
+  okText?: string;
+}): Promise<string | null> {
+  promptTitle.textContent = opts.title ?? "输入";
+  if (opts.message) {
+    promptMessage.hidden = false;
+    promptMessage.textContent = opts.message;
+  } else {
+    promptMessage.hidden = true;
+    promptMessage.textContent = "";
+  }
+  promptInput.value = opts.defaultValue ?? "";
+  promptOkBtn.textContent = opts.okText ?? "确定";
+  return new Promise((resolve) => {
+    const onClose = () => {
+      promptDialog.removeEventListener("close", onClose);
+      if (promptDialog.returnValue !== "ok") {
+        resolve(null);
+        return;
+      }
+      const name = promptInput.value.trim();
+      resolve(name ? name : null);
+    };
+    promptDialog.addEventListener("close", onClose);
+    if (typeof promptDialog.showModal === "function") {
+      promptDialog.showModal();
+      promptInput.focus();
+      promptInput.select();
+    } else {
+      resolve(null);
+    }
   });
 }
 
@@ -816,7 +859,11 @@ async function refreshAll() {
 async function onGroupAction(g: GroupConfig, act: string) {
   try {
     if (act === "rename") {
-      const name = prompt("新的分组名称", g.name);
+      const name = await askPrompt({
+        title: "重命名分组",
+        defaultValue: g.name,
+        okText: "保存",
+      });
       if (!name) return;
       await invoke("rename_group", { id: g.id, name });
       await refreshAll();
@@ -888,7 +935,11 @@ async function onAction(p: ProjectState, act: string) {
 }
 
 document.querySelector("#btn-add-group")!.addEventListener("click", async () => {
-  const name = prompt("新分组名称");
+  const name = await askPrompt({
+    title: "新建分组",
+    message: "请输入分组名称",
+    okText: "创建",
+  });
   if (!name) return;
   try {
     await invoke("add_group", { name });

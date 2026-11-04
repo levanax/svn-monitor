@@ -3,7 +3,10 @@ mod session_lock;
 mod svn;
 
 use chrono::{DateTime, Utc};
-use config::{AppConfig, GroupConfig, ProjectConfig, UNGROUPED_ID};
+use config::{
+    AppConfig, GroupConfig, ProjectConfig, WindowGeometry, DEFAULT_WINDOW_HEIGHT,
+    DEFAULT_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, UNGROUPED_ID,
+};
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -14,7 +17,8 @@ use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, State, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder, Window, WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_notification::NotificationExt;
@@ -823,6 +827,85 @@ fn notify_ui_ready() {
     schedule_cursor_reset();
 }
 
+fn logical_monitor_rects(app: &AppHandle) -> Vec<(f64, f64, f64, f64)> {
+    let Ok(monitors) = app.available_monitors() else {
+        return Vec::new();
+    };
+    monitors
+        .into_iter()
+        .map(|m| {
+            let scale = m.scale_factor();
+            let pos = m.position();
+            let size = m.size();
+            (
+                pos.x as f64 / scale,
+                pos.y as f64 / scale,
+                size.width as f64 / scale,
+                size.height as f64 / scale,
+            )
+        })
+        .collect()
+}
+
+fn usable_window_geometry(app: &AppHandle) -> Option<WindowGeometry> {
+    let state = app.state::<AppState>();
+    let geo = state.inner.lock().config.window_geometry.clone()?.sanitized();
+    if config::window_geometry_on_monitors(&geo, &logical_monitor_rects(app)) {
+        Some(geo)
+    } else {
+        None
+    }
+}
+
+fn read_window_geometry(window: &Window) -> Option<WindowGeometry> {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    if scale <= 0.0 {
+        return None;
+    }
+    let pos = window.outer_position().ok()?;
+    let size = window.inner_size().ok()?;
+    Some(
+        WindowGeometry {
+            x: pos.x as f64 / scale,
+            y: pos.y as f64 / scale,
+            width: size.width as f64 / scale,
+            height: size.height as f64 / scale,
+            maximized: window.is_maximized().unwrap_or(false),
+        }
+        .sanitized(),
+    )
+}
+
+fn save_main_window_geometry(window: &Window) {
+    let Some(geo) = read_window_geometry(window) else {
+        return;
+    };
+    let app = window.app_handle();
+    let state = app.state::<AppState>();
+    {
+        let mut guard = state.inner.lock();
+        guard.config.window_geometry = Some(geo);
+    }
+    if let Err(e) = persist(&state) {
+        eprintln!("failed to persist window geometry: {e}");
+    }
+}
+
+fn apply_window_geometry(window: &WebviewWindow, geo: &WindowGeometry) {
+    let geo = geo.clone().sanitized();
+    let _ = window.set_size(Size::Logical(LogicalSize {
+        width: geo.width,
+        height: geo.height,
+    }));
+    let _ = window.set_position(Position::Logical(LogicalPosition {
+        x: geo.x,
+        y: geo.y,
+    }));
+    if geo.maximized {
+        let _ = window.maximize();
+    }
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         // 最小化到任务栏时仅 show/focus 无效，需先 unminimize
@@ -833,17 +916,25 @@ fn show_main_window(app: &AppHandle) {
         return;
     }
     // 关闭界面时已销毁 WebView，这里按需重建以降低常驻内存
-    match WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+    let geo = usable_window_geometry(app);
+    let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("SVN Monitor")
-        .inner_size(980.0, 720.0)
-        .min_inner_size(720.0, 520.0)
+        .min_inner_size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         .resizable(true)
-        .decorations(false)
-        .center()
-        // dragDropEnabled=true：允许从资源管理器拖文件夹进分组（组内排序改用指针拖拽）
-        .build()
-    {
+        .decorations(false);
+    // dragDropEnabled=true：允许从资源管理器拖文件夹进分组（组内排序改用指针拖拽）
+    if let Some(ref g) = geo {
+        builder = builder.inner_size(g.width, g.height).position(g.x, g.y);
+    } else {
+        builder = builder
+            .inner_size(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
+            .center();
+    }
+    match builder.build() {
         Ok(w) => {
+            if geo.as_ref().is_some_and(|g| g.maximized) {
+                let _ = w.maximize();
+            }
             let _ = w.show();
             let _ = w.set_focus();
             reset_busy_cursor();
@@ -930,6 +1021,12 @@ pub fn run() {
             spawn_poller(app.handle().clone(), state.clone());
             let autostart = state.inner.lock().config.autostart;
             let _ = sync_autostart(app.handle(), autostart);
+            if let (Some(geo), Some(w)) = (
+                usable_window_geometry(app.handle()),
+                app.get_webview_window("main"),
+            ) {
+                apply_window_geometry(&w, &geo);
+            }
             let app_handle = app.handle().clone();
             let state2 = state.clone();
             thread::spawn(move || {
@@ -944,6 +1041,7 @@ pub fn run() {
                 WindowEvent::CloseRequested { api, .. } => {
                     if window.label() == "main" {
                         api.prevent_close();
+                        save_main_window_geometry(window);
                         let _ = window.destroy();
                     }
                 }

@@ -17,6 +17,7 @@ export function createMockApi() {
     theme: "system",
     groups,
     projects: [],
+    window_geometry: null,
   };
 
   let projects: ProjectState[] = [

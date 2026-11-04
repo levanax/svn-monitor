@@ -42,6 +42,55 @@ fn default_theme() -> String {
     "system".to_string()
 }
 
+pub const MIN_WINDOW_WIDTH: f64 = 720.0;
+pub const MIN_WINDOW_HEIGHT: f64 = 520.0;
+pub const DEFAULT_WINDOW_WIDTH: f64 = 980.0;
+pub const DEFAULT_WINDOW_HEIGHT: f64 = 720.0;
+
+/// 主窗逻辑坐标几何（与 WebviewWindowBuilder 一致）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WindowGeometry {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default)]
+    pub maximized: bool,
+}
+
+impl WindowGeometry {
+    pub fn sanitized(self) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            width: self.width.max(MIN_WINDOW_WIDTH),
+            height: self.height.max(MIN_WINDOW_HEIGHT),
+            maximized: self.maximized,
+        }
+    }
+}
+
+/// 判断窗口至少有一个角落在任一显示器矩形内（逻辑坐标 x,y,w,h）。
+pub fn window_geometry_on_monitors(geo: &WindowGeometry, monitors: &[(f64, f64, f64, f64)]) -> bool {
+    if monitors.is_empty() {
+        return true;
+    }
+    let corners = [
+        (geo.x, geo.y),
+        (geo.x + geo.width, geo.y),
+        (geo.x, geo.y + geo.height),
+        (geo.x + geo.width, geo.y + geo.height),
+    ];
+    for &(mx, my, mw, mh) in monitors {
+        for &(cx, cy) in &corners {
+            if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub poll_interval_secs: u64,
@@ -59,6 +108,9 @@ pub struct AppConfig {
     #[serde(default)]
     pub groups: Vec<GroupConfig>,
     pub projects: Vec<ProjectConfig>,
+    /// 主窗关闭前记住的大小与位置
+    #[serde(default)]
+    pub window_geometry: Option<WindowGeometry>,
 }
 
 impl Default for AppConfig {
@@ -71,6 +123,7 @@ impl Default for AppConfig {
             theme: default_theme(),
             groups: vec![default_ungrouped_group()],
             projects: Vec::new(),
+            window_geometry: None,
         }
     }
 }
@@ -101,6 +154,12 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.theme = normalize_theme(&cfg.theme);
     cfg.notify_enabled = true;
     cfg.pause_when_locked = true;
+    if let Some(geo) = cfg.window_geometry.take() {
+        let geo = geo.sanitized();
+        if geo.width.is_finite() && geo.height.is_finite() && geo.x.is_finite() && geo.y.is_finite() {
+            cfg.window_geometry = Some(geo);
+        }
+    }
     if !cfg.groups.iter().any(|g| g.id == UNGROUPED_ID) {
         cfg.groups.insert(0, default_ungrouped_group());
     }
@@ -221,11 +280,72 @@ mod tests {
                 mute_notify: false,
                 sort_order: 0,
             }],
+            window_geometry: None,
         };
         let n = normalize(cfg);
         assert!(n.groups.iter().any(|g| g.id == UNGROUPED_ID));
         assert_eq!(n.projects[0].group_id, UNGROUPED_ID);
         assert_eq!(n.projects[0].sort_order, 0);
+    }
+
+    #[test]
+    fn window_geometry_sanitized_enforces_min_size() {
+        let g = WindowGeometry {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 50.0,
+            maximized: false,
+        }
+        .sanitized();
+        assert_eq!(g.width, MIN_WINDOW_WIDTH);
+        assert_eq!(g.height, MIN_WINDOW_HEIGHT);
+        assert_eq!(g.x, 10.0);
+    }
+
+    #[test]
+    fn window_geometry_on_monitors_detects_offscreen() {
+        let monitors = [(0.0, 0.0, 1920.0, 1080.0)];
+        let on = WindowGeometry {
+            x: 100.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+            maximized: false,
+        };
+        let off = WindowGeometry {
+            x: 5000.0,
+            y: 5000.0,
+            width: 800.0,
+            height: 600.0,
+            maximized: false,
+        };
+        assert!(window_geometry_on_monitors(&on, &monitors));
+        assert!(!window_geometry_on_monitors(&off, &monitors));
+        assert!(window_geometry_on_monitors(&off, &[]));
+    }
+
+    #[test]
+    fn normalize_drops_non_finite_window_geometry() {
+        let cfg = AppConfig {
+            window_geometry: Some(WindowGeometry {
+                x: f64::NAN,
+                y: 0.0,
+                width: 900.0,
+                height: 600.0,
+                maximized: false,
+            }),
+            ..AppConfig::default()
+        };
+        let n = normalize(cfg);
+        assert!(n.window_geometry.is_none());
+    }
+
+    #[test]
+    fn deserialize_legacy_without_window_geometry() {
+        let raw = r#"{"poll_interval_secs":30,"notify_enabled":true,"projects":[{"id":"1","name":"a","path":"C:\\a"}]}"#;
+        let cfg: AppConfig = serde_json::from_str(raw).unwrap();
+        assert!(cfg.window_geometry.is_none());
     }
 
     #[test]

@@ -9,10 +9,23 @@ test.beforeAll(() => {
   fs.mkdirSync(outDir, { recursive: true });
 });
 
+async function openOpsMenu(page: import("@playwright/test").Page) {
+  await page.locator("#menu-ops-btn").click();
+  await expect(page.locator("#menu-ops")).toBeVisible();
+}
+
+async function openSettingsMenu(page: import("@playwright/test").Page) {
+  await page.locator("#menu-settings-btn").click();
+  await expect(page.locator("#menu-settings")).toBeVisible();
+}
+
 test("分组展示与紧凑操作", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "SVN Monitor" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /添加目录/ })).toBeVisible();
+  await expect(page.locator("#menu-ops-btn")).toBeVisible();
+  await openOpsMenu(page);
+  await expect(page.locator("#btn-add")).toBeVisible();
+  await openSettingsMenu(page);
   await expect(page.getByText("间隔(分钟)")).toBeVisible();
   await expect(page.locator("#interval")).toHaveValue("5");
   await expect(page.getByRole("heading", { name: "Mobile 2" })).toBeVisible();
@@ -60,6 +73,9 @@ test("分组展示与紧凑操作", async ({ page }) => {
   // Trello 横向列
   await expect(page.locator(".project-list")).toHaveCSS("flex-direction", "row");
 
+  // 收起设置菜单，避免挡住看板拖拽
+  await page.locator("main").click({ position: { x: 8, y: 8 } });
+
   const mobileBody = page.locator('.group-block[data-group-id="g-mobile"] .group-body');
   const firstBefore = await mobileBody.locator(".card .name").first().textContent();
   // 指针拖拽（非 HTML5 DnD）
@@ -94,12 +110,41 @@ test("分组展示与紧凑操作", async ({ page }) => {
 
   await page.screenshot({ path: path.join(outDir, "ui-main.png"), fullPage: true });
 
-  page.once("dialog", (d) => d.accept("API"));
+  // 窗口内右击：不拦截 contextmenu，无应用内自定义右键菜单节点
+  const ctxPrevented = await page.evaluate(() => {
+    const target = document.querySelector(".project-list") ?? document.body;
+    const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+    target.dispatchEvent(ev);
+    return {
+      prevented: ev.defaultPrevented,
+      customMenu: !!document.querySelector("[data-context-menu], .context-menu, .app-context-menu"),
+    };
+  });
+  expect(ctxPrevented.prevented).toBe(false);
+  expect(ctxPrevented.customMenu).toBe(false);
+
+  await openOpsMenu(page);
   await page.locator("#btn-add-group").click();
+  await expect(page.locator("#prompt-dialog")).toBeVisible();
+  await expect(page.locator("#prompt-title")).toHaveText("新建分组");
+  await page.locator("#prompt-input").fill("API");
+  await page.screenshot({ path: path.join(outDir, "ui-prompt-dialog.png") });
+  await page.locator("#prompt-ok").click();
   await expect(page.getByText("已建组 API")).toBeVisible();
   // 空分组也要显示列
   await expect(page.getByRole("heading", { name: "API 0" })).toBeVisible();
   await expect(page.locator('.group-block:has(.group-title:has-text("API")) .card-empty')).toBeVisible();
+
+  // 重命名也走应用内 prompt dialog
+  await page.locator('.group-block:has(.group-title:has-text("API")) .more-toggle').click();
+  await page.locator('.group-block:has(.group-title:has-text("API")) button[data-gact="rename"]').click();
+  await expect(page.locator("#prompt-dialog")).toBeVisible();
+  await expect(page.locator("#prompt-title")).toHaveText("重命名分组");
+  await expect(page.locator("#prompt-input")).toHaveValue("API");
+  await page.locator("#prompt-input").fill("API-Renamed");
+  await page.locator("#prompt-ok").click();
+  await expect(page.getByText("已重命名")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "API-Renamed 0" })).toBeVisible();
 
   const syncedCard = page.locator('.card:has-text("mobile-branch")');
   const behindCard = page.locator('.card:has-text("mobile-trunk")');
@@ -126,11 +171,14 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await behindCard.locator('button[data-act="cursor"]').click();
   await expect(page.locator("#status-line")).toContainText("Cursor");
 
+  await openSettingsMenu(page);
   await page.locator("#interval").fill("5");
   await page.locator("#interval").dispatchEvent("change");
   await expect(page.getByText("已保存")).toBeVisible();
   await expect(page.locator("#interval")).toHaveValue("5");
+  await page.locator("main").click({ position: { x: 8, y: 8 } });
 
+  await openOpsMenu(page);
   await page.locator("#btn-add").click();
   await expect(page.locator("#group-picker")).toBeVisible();
   await expect(page.locator('#group-picker-list input[value="ungrouped"]')).not.toBeChecked();
@@ -145,12 +193,14 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.getByText("已忽略提醒")).toBeVisible();
 
   // 确认框须先于删除弹出（不用 window.confirm）
-  await page.locator('.group-block:has(.group-title:has-text("API")) .more-toggle').click();
-  await page.locator('.group-block:has(.group-title:has-text("API")) button[data-gact="remove"]').click();
+  await page.locator('.group-block:has(.group-title:has-text("API-Renamed")) .more-toggle').click();
+  await page
+    .locator('.group-block:has(.group-title:has-text("API-Renamed")) button[data-gact="remove"]')
+    .click();
   await expect(page.locator("#confirm-dialog")).toBeVisible();
   await expect(page.locator("#confirm-title")).toHaveText("删除分组");
   await page.locator("#confirm-cancel").click();
-  await expect(page.getByRole("heading", { name: "API 0" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "API-Renamed 0" })).toBeVisible();
 
   await page.screenshot({ path: path.join(outDir, "ui-after-actions.png"), fullPage: true });
 });

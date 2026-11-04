@@ -33,6 +33,14 @@ export type ThemeMode =
   | "noir"
   | string;
 
+export interface WindowGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized?: boolean;
+}
+
 export interface AppConfig {
   poll_interval_secs: number;
   notify_enabled: boolean;
@@ -48,4 +56,5 @@ export interface AppConfig {
     mute_notify?: boolean;
     sort_order?: number;
   }[];
+  window_geometry?: WindowGeometry | null;
 }
