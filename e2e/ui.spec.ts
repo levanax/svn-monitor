@@ -110,18 +110,22 @@ test("分组展示与紧凑操作", async ({ page }) => {
 
   await page.screenshot({ path: path.join(outDir, "ui-main.png"), fullPage: true });
 
-  // 窗口内右击：不拦截 contextmenu，无应用内自定义右键菜单节点
-  const ctxPrevented = await page.evaluate(() => {
+  // 看板右击应屏蔽浏览器默认菜单（返回/刷新）；输入框仍允许
+  const ctxBoard = await page.evaluate(() => {
     const target = document.querySelector(".project-list") ?? document.body;
     const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
     target.dispatchEvent(ev);
-    return {
-      prevented: ev.defaultPrevented,
-      customMenu: !!document.querySelector("[data-context-menu], .context-menu, .app-context-menu"),
-    };
+    return ev.defaultPrevented;
   });
-  expect(ctxPrevented.prevented).toBe(false);
-  expect(ctxPrevented.customMenu).toBe(false);
+  expect(ctxBoard).toBe(true);
+  const ctxInput = await page.evaluate(() => {
+    const input = document.querySelector<HTMLInputElement>("#interval");
+    if (!input) return false;
+    const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+    input.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  });
+  expect(ctxInput).toBe(false);
 
   await openOpsMenu(page);
   await page.locator("#btn-add-group").click();

@@ -91,6 +91,42 @@ pub fn window_geometry_on_monitors(geo: &WindowGeometry, monitors: &[(f64, f64, 
     false
 }
 
+fn monitor_containing_point(
+    x: f64,
+    y: f64,
+    monitors: &[(f64, f64, f64, f64)],
+) -> Option<(f64, f64, f64, f64)> {
+    monitors
+        .iter()
+        .copied()
+        .find(|&(mx, my, mw, mh)| x >= mx && x < mx + mw && y >= my && y < my + mh)
+}
+
+/// 将还原尺寸限制在落点显示器内，避免把「整屏最大化尺寸」带到另一块屏后还原爆大。
+pub fn clamp_window_geometry_to_monitors(
+    mut geo: WindowGeometry,
+    monitors: &[(f64, f64, f64, f64)],
+) -> WindowGeometry {
+    geo = geo.sanitized();
+    if monitors.is_empty() {
+        return geo;
+    }
+    let cx = geo.x + geo.width / 2.0;
+    let cy = geo.y + geo.height / 2.0;
+    let (mx, my, mw, mh) = monitor_containing_point(cx, cy, monitors)
+        .or_else(|| monitor_containing_point(geo.x, geo.y, monitors))
+        .unwrap_or(monitors[0]);
+
+    // 留一点边距，避免贴满工作区被当成又一次「伪最大化」
+    let max_w = (mw * 0.96).max(MIN_WINDOW_WIDTH);
+    let max_h = (mh * 0.96).max(MIN_WINDOW_HEIGHT);
+    geo.width = geo.width.clamp(MIN_WINDOW_WIDTH, max_w);
+    geo.height = geo.height.clamp(MIN_WINDOW_HEIGHT, max_h);
+    geo.x = geo.x.clamp(mx, (mx + mw - geo.width).max(mx));
+    geo.y = geo.y.clamp(my, (my + mh - geo.height).max(my));
+    geo
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub poll_interval_secs: u64,
@@ -323,6 +359,24 @@ mod tests {
         assert!(window_geometry_on_monitors(&on, &monitors));
         assert!(!window_geometry_on_monitors(&off, &monitors));
         assert!(window_geometry_on_monitors(&off, &[]));
+    }
+
+    #[test]
+    fn clamp_prevents_fullscreen_restore_size_on_smaller_monitor() {
+        // 主屏 2560x1440 的「伪最大化」尺寸，落到副屏 1920x1080
+        let monitors = [(0.0, 0.0, 2560.0, 1440.0), (2560.0, 0.0, 1920.0, 1080.0)];
+        let geo = WindowGeometry {
+            x: 2600.0,
+            y: 40.0,
+            width: 2560.0,
+            height: 1440.0,
+            maximized: true,
+        };
+        let c = clamp_window_geometry_to_monitors(geo, &monitors);
+        assert!(c.width <= 1920.0 * 0.96 + 0.1);
+        assert!(c.height <= 1080.0 * 0.96 + 0.1);
+        assert!(c.x >= 2560.0);
+        assert!(c.x + c.width <= 2560.0 + 1920.0 + 0.1);
     }
 
     #[test]

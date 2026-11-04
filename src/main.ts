@@ -191,21 +191,69 @@ function setupMenubar(): void {
   });
 }
 
+/** 屏蔽页面默认右键菜单（返回 / 刷新等浏览器项）；输入框仍保留以便粘贴。 */
+function setupContextMenuPolicy(): void {
+  document.addEventListener("contextmenu", (ev) => {
+    const t = ev.target as Element | null;
+    if (t?.closest("input, textarea, select, [contenteditable='true']")) return;
+    ev.preventDefault();
+  });
+}
+
 function setupTitlebarControls(): void {
   if (useMock) {
     document.querySelector(".titlebar-controls")?.classList.add("hidden");
     return;
   }
   const win = getCurrentWindow();
+  const maxBtn = document.querySelector<HTMLButtonElement>("#titlebar-maximize");
+
+  function applyMaximizeChrome(maximized: boolean) {
+    if (!maxBtn) return;
+    maxBtn.dataset.maximized = maximized ? "true" : "false";
+    maxBtn.setAttribute("aria-pressed", maximized ? "true" : "false");
+    maxBtn.title = maximized ? "还原" : "最大化";
+    maxBtn.setAttribute("aria-label", maximized ? "还原" : "最大化");
+  }
+
+  async function syncMaximizeChrome() {
+    try {
+      applyMaximizeChrome(await win.isMaximized());
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Windows 上 isMaximized 可能略滞后于 toggle/resize，多拍几次保证图标跟上。 */
+  function syncMaximizeChromeSoon() {
+    void syncMaximizeChrome();
+    window.requestAnimationFrame(() => void syncMaximizeChrome());
+    window.setTimeout(() => void syncMaximizeChrome(), 40);
+    window.setTimeout(() => void syncMaximizeChrome(), 160);
+  }
+
   document
     .querySelector("#titlebar-minimize")
     ?.addEventListener("click", () => void win.minimize());
-  document
-    .querySelector("#titlebar-maximize")
-    ?.addEventListener("click", () => void win.toggleMaximize());
+  maxBtn?.addEventListener("click", () => {
+    // 先按当前状态乐观切换，避免等 IPC 时图标不动
+    const next = maxBtn.dataset.maximized !== "true";
+    applyMaximizeChrome(next);
+    void (async () => {
+      try {
+        await win.toggleMaximize();
+      } finally {
+        syncMaximizeChromeSoon();
+      }
+    })();
+  });
   document
     .querySelector("#titlebar-close")
     ?.addEventListener("click", () => void win.close());
+
+  void syncMaximizeChrome();
+  void win.onResized(() => syncMaximizeChromeSoon());
+  void win.onMoved(() => syncMaximizeChromeSoon());
 }
 
 async function pickGroupId(currentId: string): Promise<string | null> {
@@ -1033,6 +1081,7 @@ themeSelect.addEventListener("change", () => {
 
 async function boot() {
   const appEl = document.querySelector("#app");
+  setupContextMenuPolicy();
   setupMenubar();
   setupTitlebarControls();
   bindSystemSchemeListener();

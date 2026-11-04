@@ -64,8 +64,14 @@
           <button type="button" class="titlebar-btn" id="titlebar-minimize" title="最小化" aria-label="最小化">
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M1 5h8v1H1z"/></svg>
           </button>
-          <button type="button" class="titlebar-btn" id="titlebar-maximize" title="最大化" aria-label="最大化">
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1" d="M1.5 1.5h7v7h-7z"/></svg>
+          <button type="button" class="titlebar-btn" id="titlebar-maximize" title="最大化" aria-label="最大化" aria-pressed="false" data-maximized="false">
+            <svg class="icon-maximize" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
+            </svg>
+            <svg class="icon-restore" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="1" d="M2.5 3.5h5v5h-5z" />
+              <path fill="none" stroke="currentColor" stroke-width="1" d="M3.5 3.5V2h5v5H7" />
+            </svg>
           </button>
           <button type="button" class="titlebar-btn titlebar-btn-close" id="titlebar-close" title="关闭" aria-label="关闭">
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M1.2 1.2l7.6 7.6-.7.7L.5 1.9zm7.6 0L1.2 8.8l.7.7 7.6-7.6z"/></svg>

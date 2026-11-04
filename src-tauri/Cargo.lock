@@ -3447,6 +3447,7 @@ dependencies = [
  "tauri-winrt-notification",
  "thiserror 2.0.21",
  "uuid",
+ "webview2-com",
  "windows 0.61.3",
 ]
 

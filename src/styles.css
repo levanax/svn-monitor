@@ -442,6 +442,24 @@ main {
   app-region: no-drag;
 }
 
+.titlebar-btn .icon-maximize,
+.titlebar-btn .icon-restore {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.titlebar-btn .icon-restore {
+  display: none;
+}
+
+.titlebar-btn[data-maximized="true"] .icon-maximize {
+  display: none;
+}
+
+.titlebar-btn[data-maximized="true"] .icon-restore {
+  display: block;
+}
+
 .titlebar-btn:hover {
   background: color-mix(in srgb, var(--line) 55%, transparent);
 }

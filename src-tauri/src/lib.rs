@@ -847,19 +847,107 @@ fn logical_monitor_rects(app: &AppHandle) -> Vec<(f64, f64, f64, f64)> {
         .collect()
 }
 
+#[cfg(windows)]
+fn scale_for_physical_point(app: &AppHandle, x: i32, y: i32) -> Option<f64> {
+    let monitors = app.available_monitors().ok()?;
+    for m in monitors {
+        let pos = m.position();
+        let size = m.size();
+        if x >= pos.x
+            && x < pos.x.saturating_add(size.width as i32)
+            && y >= pos.y
+            && y < pos.y.saturating_add(size.height as i32)
+        {
+            return Some(m.scale_factor());
+        }
+    }
+    app.primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+}
+
 fn usable_window_geometry(app: &AppHandle) -> Option<WindowGeometry> {
     let state = app.state::<AppState>();
     let geo = state.inner.lock().config.window_geometry.clone()?.sanitized();
-    if config::window_geometry_on_monitors(&geo, &logical_monitor_rects(app)) {
-        Some(geo)
+    let monitors = logical_monitor_rects(app);
+    if config::window_geometry_on_monitors(&geo, &monitors) {
+        Some(config::clamp_window_geometry_to_monitors(geo, &monitors))
     } else {
         None
     }
 }
 
+/// 读取「还原」用的正常矩形。最大化时切勿把整屏尺寸当成还原尺寸，
+/// 否则跨分辨率显示器还原会爆大。
 fn read_window_geometry(window: &Window) -> Option<WindowGeometry> {
+    #[cfg(windows)]
+    {
+        if let Some(geo) = read_window_geometry_win(window) {
+            return Some(geo);
+        }
+    }
+    read_window_geometry_fallback(window)
+}
+
+#[cfg(windows)]
+fn read_window_geometry_win(window: &Window) -> Option<WindowGeometry> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowPlacement, WINDOWPLACEMENT, SW_SHOWMAXIMIZED,
+    };
+
+    // Tauri 可能链接另一版本的 windows crate；用裸指针桥接 HWND
+    let hwnd_tauri = window.hwnd().ok()?;
+    let hwnd = HWND(hwnd_tauri.0);
+    let mut place = WINDOWPLACEMENT::default();
+    place.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+    unsafe { GetWindowPlacement(hwnd, &mut place).ok()? };
+
+    let rect = place.rcNormalPosition;
+    let phys_x = rect.left;
+    let phys_y = rect.top;
+    let phys_w = (rect.right - rect.left).max(1);
+    let phys_h = (rect.bottom - rect.top).max(1);
+    let cx = phys_x + phys_w / 2;
+    let cy = phys_y + phys_h / 2;
+    let scale = scale_for_physical_point(window.app_handle(), cx, cy)
+        .or_else(|| window.scale_factor().ok())
+        .unwrap_or(1.0);
+    if scale <= 0.0 {
+        return None;
+    }
+
+    let maximized = window.is_maximized().unwrap_or(false)
+        || place.showCmd == SW_SHOWMAXIMIZED.0 as u32;
+
+    Some(
+        WindowGeometry {
+            x: phys_x as f64 / scale,
+            y: phys_y as f64 / scale,
+            width: phys_w as f64 / scale,
+            height: phys_h as f64 / scale,
+            maximized,
+        }
+        .sanitized(),
+    )
+}
+
+fn read_window_geometry_fallback(window: &Window) -> Option<WindowGeometry> {
     let scale = window.scale_factor().unwrap_or(1.0);
     if scale <= 0.0 {
+        return None;
+    }
+    let maximized = window.is_maximized().unwrap_or(false);
+    if maximized {
+        // 无 Win32 placement 时：保留上次非最大化几何，只更新 maximized 标记
+        let app = window.app_handle();
+        let state = app.state::<AppState>();
+        if let Some(prev) = state.inner.lock().config.window_geometry.clone() {
+            let mut geo = prev.sanitized();
+            geo.maximized = true;
+            return Some(geo);
+        }
         return None;
     }
     let pos = window.outer_position().ok()?;
@@ -870,7 +958,7 @@ fn read_window_geometry(window: &Window) -> Option<WindowGeometry> {
             y: pos.y as f64 / scale,
             width: size.width as f64 / scale,
             height: size.height as f64 / scale,
-            maximized: window.is_maximized().unwrap_or(false),
+            maximized: false,
         }
         .sanitized(),
     )
@@ -892,7 +980,9 @@ fn save_main_window_geometry(window: &Window) {
 }
 
 fn apply_window_geometry(window: &WebviewWindow, geo: &WindowGeometry) {
-    let geo = geo.clone().sanitized();
+    let monitors = logical_monitor_rects(window.app_handle());
+    let geo = config::clamp_window_geometry_to_monitors(geo.clone().sanitized(), &monitors);
+    // 先落到「正常」矩形，再 maximize；这样点还原不会用到整屏尺寸
     let _ = window.set_size(Size::Logical(LogicalSize {
         width: geo.width,
         height: geo.height,
@@ -903,6 +993,28 @@ fn apply_window_geometry(window: &WebviewWindow, geo: &WindowGeometry) {
     }));
     if geo.maximized {
         let _ = window.maximize();
+    }
+}
+
+/// 关掉 WebView2 默认右键菜单（返回 / 前进 / 刷新 等浏览器项）。
+fn disable_default_context_menu(window: &WebviewWindow) {
+    #[cfg(windows)]
+    {
+        let _ = window.with_webview(|platform| {
+            unsafe {
+                let Ok(webview) = platform.controller().CoreWebView2() else {
+                    return;
+                };
+                let Ok(settings) = webview.Settings() else {
+                    return;
+                };
+                let _ = settings.SetAreDefaultContextMenusEnabled(false);
+            }
+        });
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window;
     }
 }
 
@@ -932,6 +1044,7 @@ fn show_main_window(app: &AppHandle) {
     }
     match builder.build() {
         Ok(w) => {
+            disable_default_context_menu(&w);
             if geo.as_ref().is_some_and(|g| g.maximized) {
                 let _ = w.maximize();
             }
@@ -1021,11 +1134,11 @@ pub fn run() {
             spawn_poller(app.handle().clone(), state.clone());
             let autostart = state.inner.lock().config.autostart;
             let _ = sync_autostart(app.handle(), autostart);
-            if let (Some(geo), Some(w)) = (
-                usable_window_geometry(app.handle()),
-                app.get_webview_window("main"),
-            ) {
-                apply_window_geometry(&w, &geo);
+            if let Some(w) = app.get_webview_window("main") {
+                disable_default_context_menu(&w);
+                if let Some(geo) = usable_window_geometry(app.handle()) {
+                    apply_window_geometry(&w, &geo);
+                }
             }
             let app_handle = app.handle().clone();
             let state2 = state.clone();
