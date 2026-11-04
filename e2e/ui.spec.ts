@@ -131,6 +131,9 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await page.locator("#btn-add-group").click();
   await expect(page.locator("#prompt-dialog")).toBeVisible();
   await expect(page.locator("#prompt-title")).toHaveText("新建分组");
+  await expect
+    .poll(() => page.locator("#prompt-dialog").evaluate((el) => (el as HTMLDialogElement).matches(":modal")))
+    .toBe(true);
   await page.locator("#prompt-input").fill("API");
   await page.screenshot({ path: path.join(outDir, "ui-prompt-dialog.png") });
   await page.locator("#prompt-ok").click();
@@ -139,10 +142,14 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "API 0" })).toBeVisible();
   await expect(page.locator('.group-block:has(.group-title:has-text("API")) .card-empty')).toBeVisible();
 
-  // 重命名也走应用内 prompt dialog
+  // 重命名贴在分组菜单旁，非模态、无全屏遮罩
   await page.locator('.group-block:has(.group-title:has-text("API")) .more-toggle').click();
   await page.locator('.group-block:has(.group-title:has-text("API")) button[data-gact="rename"]').click();
   await expect(page.locator("#prompt-dialog")).toBeVisible();
+  await expect(page.locator("#prompt-dialog")).toHaveClass(/anchored/);
+  await expect
+    .poll(() => page.locator("#prompt-dialog").evaluate((el) => (el as HTMLDialogElement).matches(":modal")))
+    .toBe(false);
   await expect(page.locator("#prompt-title")).toHaveText("重命名分组");
   await expect(page.locator("#prompt-input")).toHaveValue("API");
   await page.locator("#prompt-input").fill("API-Renamed");

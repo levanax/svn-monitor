@@ -662,16 +662,64 @@ html[data-scheme="dark"] .group-select option {
   padding: 0.55rem 0.75rem;
   font: inherit;
   font-size: 1rem;
+  /* 失焦后也要保持和对话框底色的对比，避免玻璃描边在浅色主题上消失 */
   color: var(--text);
-  background: color-mix(in srgb, var(--bg0) 18%, var(--dialog-surface));
-  border: 1px solid var(--glass-edge);
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--accent);
+  background-color: color-mix(in srgb, var(--text) 11%, var(--dialog-surface));
+  border: 1px solid color-mix(in srgb, var(--text) 55%, var(--dialog-surface));
   border-radius: 0.4rem;
   outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text) 12%, transparent);
+  opacity: 1;
+}
+
+.prompt-dialog #prompt-input:hover {
+  border-color: color-mix(in srgb, var(--text) 48%, var(--dialog-surface));
 }
 
 .prompt-dialog #prompt-input:focus {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  background-color: var(--dialog-surface);
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--text));
+  box-shadow:
+    inset 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* 重命名：贴在分组菜单原位，非模态、无全屏遮罩 */
+.prompt-dialog.anchored {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 16.5rem;
+  max-width: calc(100vw - 1rem);
+  max-height: none;
+  height: auto;
+  z-index: 80;
+  transform: none;
+}
+
+.prompt-dialog.anchored[open] {
+  transform: none;
+}
+
+.prompt-dialog.anchored form {
+  min-width: 0;
+  padding: 0.7rem 0.75rem 0.65rem;
+  gap: 0.55rem;
+}
+
+.prompt-dialog.anchored h3 {
+  font-size: 0.875rem;
+}
+
+.prompt-dialog.anchored .group-picker-actions .btn {
+  min-width: 4.25rem;
+  padding: 0.3rem 0.65rem;
 }
 
 .visually-hidden {

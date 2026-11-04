@@ -352,8 +352,13 @@ function render() {
     head.querySelectorAll<HTMLButtonElement>("button[data-gact]").forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
+        const menu = btn.closest(".more-menu");
+        const box = menu?.getBoundingClientRect();
+        const anchorRect = box
+          ? { top: box.top, left: box.left, right: box.right, bottom: box.bottom }
+          : undefined;
         closeAllMoreMenus();
-        void onGroupAction(g, btn.dataset.gact!);
+        void onGroupAction(g, btn.dataset.gact!, anchorRect);
       });
     });
     bindColumnPointerDrag(block, head, g.id);
@@ -675,12 +680,31 @@ function askConfirm(opts: {
   });
 }
 
-/** 应用内文本输入（替代 WebView 原生 prompt）。取消或空串返回 null。 */
+type AnchorRect = { top: number; left: number; right: number; bottom: number };
+
+/** 把非模态输入浮层放到原菜单矩形处（右缘对齐），并夹在视口内。 */
+function placePromptNear(rect: AnchorRect) {
+  const margin = 8;
+  const dw = promptDialog.offsetWidth || 264;
+  const dh = promptDialog.offsetHeight || 148;
+  let top = rect.top;
+  let left = rect.right - dw;
+  if (left < margin) left = margin;
+  if (left + dw > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - dw - margin);
+  if (top + dh > window.innerHeight - margin) top = Math.max(margin, window.innerHeight - dh - margin);
+  if (top < margin) top = margin;
+  promptDialog.style.top = `${Math.round(top)}px`;
+  promptDialog.style.left = `${Math.round(left)}px`;
+}
+
+/** 应用内文本输入（替代 WebView 原生 prompt）。取消或空串返回 null。
+ * 传入 anchorRect 时改为贴在该位置的非模态浮层，不盖全屏遮罩。 */
 function askPrompt(opts: {
   title?: string;
   message?: string;
   defaultValue?: string;
   okText?: string;
+  anchorRect?: AnchorRect | null;
 }): Promise<string | null> {
   promptTitle.textContent = opts.title ?? "输入";
   if (opts.message) {
@@ -692,9 +716,34 @@ function askPrompt(opts: {
   }
   promptInput.value = opts.defaultValue ?? "";
   promptOkBtn.textContent = opts.okText ?? "确定";
+  const anchored = !!opts.anchorRect;
   return new Promise((resolve) => {
-    const onClose = () => {
+    let settled = false;
+    const clearAnchor = () => {
+      promptDialog.classList.remove("anchored");
+      promptDialog.style.top = "";
+      promptDialog.style.left = "";
+    };
+    const onDocPointerDown = (ev: PointerEvent) => {
+      const t = ev.target;
+      if (t instanceof Node && promptDialog.contains(t)) return;
+      promptDialog.close();
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      ev.preventDefault();
+      promptDialog.close();
+    };
+    const cleanup = () => {
       promptDialog.removeEventListener("close", onClose);
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
+      document.removeEventListener("keydown", onKey, true);
+      clearAnchor();
+    };
+    const onClose = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       if (promptDialog.returnValue !== "ok") {
         resolve(null);
         return;
@@ -702,13 +751,41 @@ function askPrompt(opts: {
       const name = promptInput.value.trim();
       resolve(name ? name : null);
     };
-    promptDialog.addEventListener("close", onClose);
-    if (typeof promptDialog.showModal === "function") {
-      promptDialog.showModal();
-      promptInput.focus();
-      promptInput.select();
-    } else {
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        if (promptDialog.open) promptDialog.close();
+      } catch {
+        /* 已关闭 */
+      }
       resolve(null);
+    };
+    promptDialog.addEventListener("close", onClose);
+    try {
+      if (anchored && opts.anchorRect && typeof promptDialog.show === "function") {
+        document.addEventListener("pointerdown", onDocPointerDown, true);
+        document.addEventListener("keydown", onKey, true);
+        promptDialog.classList.add("anchored");
+        promptDialog.style.top = `${opts.anchorRect.top}px`;
+        promptDialog.style.left = `${opts.anchorRect.left}px`;
+        promptDialog.show();
+        placePromptNear(opts.anchorRect);
+        promptInput.focus();
+        promptInput.select();
+        return;
+      }
+      clearAnchor();
+      if (typeof promptDialog.showModal === "function") {
+        promptDialog.showModal();
+        promptInput.focus();
+        promptInput.select();
+        return;
+      }
+      fail();
+    } catch {
+      fail();
     }
   });
 }
@@ -904,13 +981,14 @@ async function refreshAll() {
   render();
 }
 
-async function onGroupAction(g: GroupConfig, act: string) {
+async function onGroupAction(g: GroupConfig, act: string, anchorRect?: AnchorRect) {
   try {
     if (act === "rename") {
       const name = await askPrompt({
         title: "重命名分组",
         defaultValue: g.name,
         okText: "保存",
+        anchorRect,
       });
       if (!name) return;
       await invoke("rename_group", { id: g.id, name });
