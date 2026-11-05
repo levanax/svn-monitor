@@ -417,6 +417,31 @@ fn remove_group(state: State<'_, AppState>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_group_column_span(
+    state: State<'_, AppState>,
+    id: String,
+    column_span: u8,
+) -> Result<(), String> {
+    if id == UNGROUPED_ID {
+        return Err("不能设置「未分组」的列宽".into());
+    }
+    if !(1..=3).contains(&column_span) {
+        return Err("列宽只能是 1、2 或 3".into());
+    }
+    {
+        let mut guard = state.inner.lock();
+        let g = guard
+            .config
+            .groups
+            .iter_mut()
+            .find(|g| g.id == id)
+            .ok_or_else(|| "分组不存在".to_string())?;
+        g.column_span = column_span;
+    }
+    persist(&state)
+}
+
+#[tauri::command]
 fn set_project_group(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -621,6 +646,23 @@ fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn sync_open_hotkey(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+    let hotkey = hotkey.trim();
+    if hotkey.is_empty() {
+        return Ok(());
+    }
+    gs.on_shortcut(hotkey, |app, _shortcut, event| {
+        if event.state == ShortcutState::Pressed {
+            show_main_window(app);
+        }
+    })
+    .map_err(|e| format!("快捷键无效或已被占用：{e}"))
+}
+
 #[tauri::command]
 fn save_settings(
     app: AppHandle,
@@ -628,10 +670,14 @@ fn save_settings(
     poll_interval_secs: u64,
     autostart: bool,
     theme: String,
+    open_hotkey: String,
 ) -> Result<(), String> {
     if poll_interval_secs < 60 {
         return Err("poll interval must be >= 1 minute".into());
     }
+    let open_hotkey = open_hotkey.trim().to_string();
+    // 先尝试注册，失败则不落盘，避免写出无法生效的热键
+    sync_open_hotkey(&app, &open_hotkey)?;
     {
         let mut guard = state.inner.lock();
         guard.config.poll_interval_secs = poll_interval_secs;
@@ -640,6 +686,7 @@ fn save_settings(
         guard.config.pause_when_locked = true;
         guard.config.autostart = autostart;
         guard.config.theme = config::normalize_theme(&theme);
+        guard.config.open_hotkey = open_hotkey;
     }
     persist(&state)?;
     sync_autostart(&app, autostart)
@@ -1104,6 +1151,7 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             Some(vec![]),
         ))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             get_config,
@@ -1112,6 +1160,7 @@ pub fn run() {
             add_group,
             rename_group,
             remove_group,
+            set_group_column_span,
             set_project_group,
             set_project_mute,
             reorder_projects,
@@ -1132,8 +1181,14 @@ pub fn run() {
             setup_tray(app.handle())?;
             session_lock::start_session_watch(app.handle().clone());
             spawn_poller(app.handle().clone(), state.clone());
-            let autostart = state.inner.lock().config.autostart;
+            let (autostart, open_hotkey) = {
+                let guard = state.inner.lock();
+                (guard.config.autostart, guard.config.open_hotkey.clone())
+            };
             let _ = sync_autostart(app.handle(), autostart);
+            if let Err(e) = sync_open_hotkey(app.handle(), &open_hotkey) {
+                eprintln!("open hotkey register failed: {e}");
+            }
             if let Some(w) = app.get_webview_window("main") {
                 disable_default_context_menu(&w);
                 if let Some(geo) = usable_window_geometry(app.handle()) {

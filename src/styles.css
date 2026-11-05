@@ -7,6 +7,9 @@
   --warn: #c99212;
   --danger: #c45c4a;
   --behind: #e85a9b;
+  --board-col: 18rem;
+  --board-gap: 0.75rem;
+  --board-card: calc(var(--board-col) - 1rem);
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, "PingFang SC",
     "Microsoft YaHei", sans-serif;
   color: var(--text);
@@ -371,7 +374,7 @@ main {
 }
 
 .menubar-panel-settings {
-  min-width: 13.5rem;
+  min-width: 15.5rem;
   padding: 0.55rem 0.65rem;
   gap: 0.55rem;
 }
@@ -400,6 +403,18 @@ main {
 
 .menubar-field select {
   max-width: 8.5rem;
+}
+
+.hotkey-field input {
+  width: 8.5rem;
+  cursor: pointer;
+  text-align: right;
+  font-size: 0.8125rem;
+}
+
+.hotkey-field input:focus {
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 
 .titlebar-drag {
@@ -743,7 +758,7 @@ html[data-scheme="dark"] .group-select option {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 0.75rem;
+  gap: var(--board-gap);
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 0.35rem;
@@ -754,8 +769,9 @@ html[data-scheme="dark"] .group-select option {
 }
 
 .group-block {
-  flex: 0 0 18rem;
-  width: 18rem;
+  --group-span: 1;
+  flex: 0 0 calc(var(--group-span) * var(--board-col) + (var(--group-span) - 1) * var(--board-gap));
+  width: calc(var(--group-span) * var(--board-col) + (var(--group-span) - 1) * var(--board-gap));
   height: 100%;
   max-height: 100%;
   display: flex;
@@ -782,7 +798,17 @@ html[data-scheme="dark"] .group-select option {
     outline-color var(--dur-fast) ease,
     box-shadow var(--dur-fast) var(--ease-out),
     opacity var(--dur-med) var(--ease-out),
-    transform var(--dur-med) var(--ease-out);
+    transform var(--dur-med) var(--ease-out),
+    width var(--dur-med) var(--ease-out),
+    flex-basis var(--dur-med) var(--ease-out);
+}
+
+.group-block[data-span="2"] {
+  --group-span: 2;
+}
+
+.group-block[data-span="3"] {
+  --group-span: 3;
 }
 
 .board-enter .group-block {
@@ -1025,7 +1051,9 @@ html[data-scheme="dark"] .group-select option {
   margin: 0;
   padding: 0.5rem;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 0.5rem;
   overflow-y: auto;
   flex: 1 1 auto;
@@ -1043,7 +1071,11 @@ html[data-scheme="dark"] .group-select option {
   grid-template-rows: auto auto;
   column-gap: 0.35rem;
   row-gap: 0.4rem;
+  flex: 0 0 var(--board-card);
+  width: var(--board-card);
+  max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   padding: 0.55rem 0.55rem 0.55rem 0.25rem;
   border: 1px solid var(--glass-edge);
   border-radius: var(--radius);
@@ -1517,6 +1549,67 @@ html[data-scheme="light"] .svn-path.tag .svn-rel {
   background: color-mix(in srgb, var(--danger) 16%, var(--bg2));
 }
 
+.more-item.checked {
+  font-weight: 600;
+}
+
+.more-item.checked::before {
+  content: "✓ ";
+}
+
+.more-submenu-wrap {
+  position: relative;
+}
+
+.more-submenu-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  box-sizing: border-box;
+}
+
+.more-submenu-trigger::after {
+  content: "›";
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.more-submenu-wrap.open .more-submenu-trigger {
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg2));
+}
+
+.more-submenu {
+  position: absolute;
+  /* 与触发项轻微重叠，避免移入子菜单时经过空隙触发 pointerleave */
+  right: calc(100% - 1px);
+  top: -0.25rem;
+  z-index: 31;
+  min-width: 5.5rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--glass-edge);
+  background: var(--btn-surface);
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    0 12px 32px var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.more-submenu[hidden] {
+  display: none !important;
+}
+
+.card-empty {
+  flex: 1 1 100%;
+  width: 100%;
+  max-width: 100%;
+}
+
 .empty {
   text-align: center;
   color: var(--muted);
@@ -1532,8 +1625,7 @@ html[data-scheme="light"] .svn-path.tag .svn-rel {
 }
 
 @media (max-width: 640px) {
-  .group-block {
-    flex-basis: 16rem;
-    width: 16rem;
+  :root {
+    --board-col: 16rem;
   }
 }

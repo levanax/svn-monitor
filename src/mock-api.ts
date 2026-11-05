@@ -5,8 +5,8 @@ const UNGROUPED = "ungrouped";
 /** Browser / Playwright mock backend when not running inside Tauri. */
 export function createMockApi() {
   const groups: GroupConfig[] = [
-    { id: UNGROUPED, name: "未分组" },
-    { id: "g-mobile", name: "Mobile" },
+    { id: UNGROUPED, name: "未分组", column_span: 1 },
+    { id: "g-mobile", name: "Mobile", column_span: 1 },
   ];
 
   const cfg: AppConfig = {
@@ -14,6 +14,7 @@ export function createMockApi() {
     notify_enabled: true,
     pause_when_locked: true,
     autostart: false,
+    open_hotkey: "",
     theme: "system",
     groups,
     projects: [],
@@ -94,7 +95,7 @@ export function createMockApi() {
         case "add_group": {
           const name = String(args?.name ?? "").trim();
           if (!name) throw new Error("分组名称不能为空");
-          const g = { id: `g-${Date.now()}`, name };
+          const g = { id: `g-${Date.now()}`, name, column_span: 1 };
           groups.push(g);
           cfg.groups = [...groups];
           return g as T;
@@ -105,6 +106,17 @@ export function createMockApi() {
           const g = groups.find((x) => x.id === id);
           if (!g) throw new Error("分组不存在");
           g.name = name;
+          return undefined as T;
+        }
+        case "set_group_column_span": {
+          const id = String(args?.id ?? "");
+          const columnSpan = Number(args?.columnSpan ?? 0);
+          if (id === UNGROUPED) throw new Error("不能设置「未分组」的列宽");
+          if (![1, 2, 3].includes(columnSpan)) throw new Error("列宽只能是 1、2 或 3");
+          const g = groups.find((x) => x.id === id);
+          if (!g) throw new Error("分组不存在");
+          g.column_span = columnSpan;
+          cfg.groups = [...groups];
           return undefined as T;
         }
         case "remove_group": {
@@ -207,6 +219,7 @@ export function createMockApi() {
           cfg.pause_when_locked = true;
           cfg.autostart = Boolean(args?.autostart);
           cfg.theme = String(args?.theme ?? cfg.theme);
+          cfg.open_hotkey = String(args?.openHotkey ?? cfg.open_hotkey ?? "").trim();
           return undefined as T;
         }
         case "check_project":

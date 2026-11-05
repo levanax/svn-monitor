@@ -25,6 +25,7 @@ const emptyEl = document.querySelector<HTMLParagraphElement>("#empty")!;
 const statusLine = document.querySelector<HTMLParagraphElement>("#status-line")!;
 const intervalInput = document.querySelector<HTMLInputElement>("#interval")!;
 const autostartInput = document.querySelector<HTMLInputElement>("#autostart")!;
+const openHotkeyInput = document.querySelector<HTMLInputElement>("#open-hotkey")!;
 const themeSelect = document.querySelector<HTMLSelectElement>("#theme")!;
 
 const THEMES = [
@@ -134,6 +135,11 @@ function customGroups(): GroupConfig[] {
 
 function hasCustomGroups(): boolean {
   return customGroups().length > 0;
+}
+
+function clampColumnSpan(span: number | undefined): 1 | 2 | 3 {
+  if (span === 2 || span === 3) return span;
+  return 1;
 }
 
 /** 无自定义分组时提醒先建组（「未分组」不算）。 */
@@ -313,10 +319,28 @@ function render() {
     const block = document.createElement("section");
     block.className = "group-block";
     block.dataset.groupId = g.id;
+    const span = g.id === "ungrouped" ? 1 : clampColumnSpan(g.column_span);
+    block.dataset.span = String(span);
 
     const head = document.createElement("div");
     head.className = "group-head";
     head.title = "拖动调整分组左右顺序";
+    const spanSubmenu =
+      g.id === "ungrouped"
+        ? ""
+        : `<div class="more-submenu-wrap">
+            <button type="button" class="more-item more-submenu-trigger" aria-haspopup="menu" aria-expanded="false">列宽</button>
+            <div class="more-submenu" role="menu" hidden>
+              ${([1, 2, 3] as const)
+                .map(
+                  (n) =>
+                    `<button type="button" class="more-item${span === n ? " checked" : ""}" role="menuitemradio" aria-checked="${
+                      span === n ? "true" : "false"
+                    }" data-gact="span-${n}">${n}列</button>`,
+                )
+                .join("")}
+            </div>
+          </div>`;
     head.innerHTML = `
       <span class="group-grip" aria-hidden="true"></span>
       <h2 class="group-title">${escapeHtml(g.name)} <span class="group-count">${items.length}</span></h2>
@@ -328,6 +352,7 @@ function render() {
                 <button type="button" class="more-toggle" aria-label="分组操作" aria-haspopup="menu" aria-expanded="false" title="分组操作">⋯</button>
                 <div class="more-menu" role="menu" hidden>
                   <button type="button" class="more-item" role="menuitem" data-gact="rename">重命名</button>
+                  ${spanSubmenu}
                   <button type="button" class="more-item danger" role="menuitem" data-gact="remove">删除分组</button>
                 </div>
               </div>`
@@ -347,6 +372,31 @@ function render() {
           moreWrap.classList.add("open");
           moreToggle.setAttribute("aria-expanded", "true");
         }
+      });
+    }
+    const submenuWrap = head.querySelector<HTMLElement>(".more-submenu-wrap");
+    const submenuTrigger = head.querySelector<HTMLButtonElement>(".more-submenu-trigger");
+    const submenu = head.querySelector<HTMLElement>(".more-submenu");
+    if (submenuWrap && submenuTrigger && submenu) {
+      const openSubmenu = () => {
+        closeAllSubmenus(moreMenu ?? undefined);
+        submenu.removeAttribute("hidden");
+        submenuWrap.classList.add("open");
+        submenuTrigger.setAttribute("aria-expanded", "true");
+      };
+      const closeSubmenu = () => {
+        submenuWrap.classList.remove("open");
+        submenu.setAttribute("hidden", "");
+        submenuTrigger.setAttribute("aria-expanded", "false");
+      };
+      // 悬停展开；移出后收起（子菜单在 wrap 内，可直接滑入）
+      submenuWrap.addEventListener("pointerenter", () => openSubmenu());
+      submenuWrap.addEventListener("pointerleave", () => closeSubmenu());
+      // 点击仍可切换，兼顾触控
+      submenuTrigger.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (submenu.hasAttribute("hidden")) openSubmenu();
+        else closeSubmenu();
       });
     }
     head.querySelectorAll<HTMLButtonElement>("button[data-gact]").forEach((btn) => {
@@ -630,7 +680,16 @@ function renderCard(p: ProjectState): HTMLLIElement {
   return li;
 }
 
+function closeAllSubmenus(root: ParentNode = document) {
+  root.querySelectorAll<HTMLElement>(".more-submenu-wrap.open").forEach((wrap) => {
+    wrap.classList.remove("open");
+    wrap.querySelector<HTMLElement>(".more-submenu")?.setAttribute("hidden", "");
+    wrap.querySelector(".more-submenu-trigger")?.setAttribute("aria-expanded", "false");
+  });
+}
+
 function closeAllMoreMenus() {
+  closeAllSubmenus();
   document.querySelectorAll<HTMLElement>(".more-menu:not([hidden])").forEach((menu) => {
     menu.setAttribute("hidden", "");
     menu.closest(".more-wrap")?.classList.remove("open");
@@ -969,10 +1028,63 @@ async function loadConfig() {
   const cfg = await invoke<AppConfig>("get_config");
   intervalInput.value = String(secsToMinutes(cfg.poll_interval_secs));
   autostartInput.checked = !!cfg.autostart;
+  openHotkeyInput.value = (cfg.open_hotkey ?? "").trim();
   const theme = normalizeThemePref(cfg.theme);
   themeSelect.value = theme;
   applyTheme(theme);
   groups = cfg.groups?.length ? cfg.groups : await invoke<GroupConfig[]>("list_groups");
+}
+
+/** 将按键事件转为 Tauri global-shortcut 加速键字符串；Esc 返回空串表示清除。 */
+function acceleratorFromKeyEvent(ev: KeyboardEvent): string | null {
+  if (ev.key === "Escape") return "";
+  if (["Control", "Alt", "Shift", "Meta"].includes(ev.key)) return null;
+
+  const mods: string[] = [];
+  if (ev.ctrlKey || ev.metaKey) mods.push("Ctrl");
+  if (ev.altKey) mods.push("Alt");
+  if (ev.shiftKey) mods.push("Shift");
+
+  let key = "";
+  if (/^F\d{1,2}$/i.test(ev.key)) {
+    key = ev.key.toUpperCase();
+  } else if (ev.code.startsWith("Key") && ev.code.length === 4) {
+    key = ev.code.slice(3);
+  } else if (ev.code.startsWith("Digit")) {
+    key = ev.code.slice(5);
+  } else {
+    const special: Record<string, string> = {
+      Space: "Space",
+      Tab: "Tab",
+      Enter: "Enter",
+      Backquote: "`",
+      Minus: "-",
+      Equal: "=",
+      BracketLeft: "[",
+      BracketRight: "]",
+      Backslash: "\\",
+      Semicolon: ";",
+      Quote: "'",
+      Comma: ",",
+      Period: ".",
+      Slash: "/",
+      ArrowUp: "Up",
+      ArrowDown: "Down",
+      ArrowLeft: "Left",
+      ArrowRight: "Right",
+      Home: "Home",
+      End: "End",
+      PageUp: "PageUp",
+      PageDown: "PageDown",
+      Insert: "Insert",
+      Delete: "Delete",
+    };
+    key = special[ev.code] ?? "";
+  }
+  if (!key) return null;
+  // 除功能键外，至少需要一个修饰键，避免误占单键
+  if (mods.length === 0 && !/^F\d+$/.test(key)) return null;
+  return [...mods, key].join("+");
 }
 
 async function refreshAll() {
@@ -1004,6 +1116,12 @@ async function onGroupAction(g: GroupConfig, act: string, anchorRect?: AnchorRec
       await invoke("remove_group", { id: g.id });
       await refreshAll();
       setStatus("已删组");
+    } else if (act === "span-1" || act === "span-2" || act === "span-3") {
+      const columnSpan = Number(act.slice(-1)) as 1 | 2 | 3;
+      if (clampColumnSpan(g.column_span) === columnSpan) return;
+      await invoke("set_group_column_span", { id: g.id, columnSpan });
+      await refreshAll();
+      setStatus(`已设为 ${columnSpan} 列宽`);
     }
   } catch (e) {
     setStatus(String(e));
@@ -1134,6 +1252,7 @@ async function persistSettings(quiet = false) {
       pollIntervalSecs: secs,
       autostart: autostartInput.checked,
       theme: themeSelect.value,
+      openHotkey: openHotkeyInput.value.trim(),
     });
     await ensureNotifyPermission();
     if (!quiet) setStatus("已保存");
@@ -1155,6 +1274,21 @@ autostartInput.addEventListener("change", () => void persistSettings());
 themeSelect.addEventListener("change", () => {
   applyTheme(normalizeThemePref(themeSelect.value));
   void persistSettings();
+});
+
+openHotkeyInput.addEventListener("keydown", (ev) => {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const accel = acceleratorFromKeyEvent(ev);
+  if (accel === null) return;
+  openHotkeyInput.value = accel;
+  void persistSettings();
+});
+openHotkeyInput.addEventListener("focus", () => {
+  openHotkeyInput.placeholder = "按下组合键…";
+});
+openHotkeyInput.addEventListener("blur", () => {
+  openHotkeyInput.placeholder = "点击后按键";
 });
 
 async function boot() {

@@ -3,6 +3,8 @@ export type ProjectStatus = "unknown" | "checking" | "up_to_date" | "behind" | "
 export interface GroupConfig {
   id: string;
   name: string;
+  /** 占看板基础列数 1..=3；未分组固定为 1 */
+  column_span?: number;
 }
 
 export interface ProjectState {
@@ -46,6 +48,8 @@ export interface AppConfig {
   notify_enabled: boolean;
   pause_when_locked: boolean;
   autostart: boolean;
+  /** 全局快捷键唤起主窗口；空表示关闭 */
+  open_hotkey?: string;
   theme: ThemeMode | string;
   groups: GroupConfig[];
   projects: {

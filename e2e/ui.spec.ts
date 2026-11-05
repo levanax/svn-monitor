@@ -40,6 +40,15 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.locator("#notify-enabled")).toHaveCount(0);
   await expect(page.locator("#pause-locked")).toHaveCount(0);
   await expect(page.locator("#autostart")).toBeVisible();
+  await expect(page.locator("#open-hotkey")).toBeVisible();
+  await expect(page.locator("#open-hotkey")).toHaveValue("");
+  await page.locator("#open-hotkey").focus();
+  await page.keyboard.press("Control+Shift+KeyM");
+  await expect(page.locator("#open-hotkey")).toHaveValue("Ctrl+Shift+M");
+  await expect(page.getByText("已保存")).toBeVisible();
+  await page.locator("#open-hotkey").focus();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#open-hotkey")).toHaveValue("");
   await expect(page.locator("#theme")).toBeVisible();
   await expect(page.locator("#theme")).toHaveValue("system");
   await expect(page.locator("html")).toHaveAttribute("data-theme-pref", "system");
@@ -140,7 +149,23 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.getByText("已建组 API")).toBeVisible();
   // 空分组也要显示列
   await expect(page.getByRole("heading", { name: "API 0" })).toBeVisible();
-  await expect(page.locator('.group-block:has(.group-title:has-text("API")) .card-empty')).toBeVisible();
+  const apiBlock = page.locator('.group-block:has(.group-title:has-text("API"))');
+  await expect(apiBlock.locator(".card-empty")).toBeVisible();
+  await expect(apiBlock).toHaveAttribute("data-span", "1");
+
+  // 自定义分组可切换列宽（⋯ → 悬停「列宽」展开子菜单）
+  await apiBlock.locator(".more-toggle").click();
+  await apiBlock.locator(".more-submenu-trigger").hover();
+  await expect(apiBlock.locator(".more-submenu")).toBeVisible();
+  await apiBlock.locator('button[data-gact="span-2"]').click();
+  await expect(page.getByText("已设为 2 列宽")).toBeVisible();
+  await expect(apiBlock).toHaveAttribute("data-span", "2");
+  await apiBlock.locator(".more-toggle").click();
+  await apiBlock.locator(".more-submenu-trigger").hover();
+  await expect(apiBlock.locator('button[data-gact="span-2"]')).toHaveAttribute("aria-checked", "true");
+  await apiBlock.locator('button[data-gact="span-1"]').click();
+  await expect(page.getByText("已设为 1 列宽")).toBeVisible();
+  await expect(apiBlock).toHaveAttribute("data-span", "1");
 
   // 重命名贴在分组菜单旁，非模态、无全屏遮罩
   await page.locator('.group-block:has(.group-title:has-text("API")) .more-toggle').click();

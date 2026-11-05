@@ -9,6 +9,9 @@ pub const UNGROUPED_ID: &str = "ungrouped";
 pub struct GroupConfig {
     pub id: String,
     pub name: String,
+    /// 分组占看板基础列数（1..=3）；未分组固定为 1
+    #[serde(default = "default_column_span")]
+    pub column_span: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +43,14 @@ fn default_false() -> bool {
 
 fn default_theme() -> String {
     "system".to_string()
+}
+
+fn default_column_span() -> u8 {
+    1
+}
+
+pub fn clamp_column_span(span: u8) -> u8 {
+    span.clamp(1, 3)
 }
 
 pub const MIN_WINDOW_WIDTH: f64 = 720.0;
@@ -138,6 +149,9 @@ pub struct AppConfig {
     pub pause_when_locked: bool,
     #[serde(default = "default_false")]
     pub autostart: bool,
+    /// 全局快捷键唤起主窗口；空字符串表示关闭
+    #[serde(default)]
+    pub open_hotkey: String,
     /// system | light | dark | dawn | sky | lilac | mint | dusk | noir
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -156,6 +170,7 @@ impl Default for AppConfig {
             notify_enabled: true,
             pause_when_locked: true,
             autostart: false,
+            open_hotkey: String::new(),
             theme: default_theme(),
             groups: vec![default_ungrouped_group()],
             projects: Vec::new(),
@@ -177,6 +192,7 @@ pub fn default_ungrouped_group() -> GroupConfig {
     GroupConfig {
         id: UNGROUPED_ID.to_string(),
         name: "未分组".to_string(),
+        column_span: 1,
     }
 }
 
@@ -188,6 +204,7 @@ pub fn config_path() -> PathBuf {
 /// Ensure ungrouped exists, every project points at a known group, and sort_order is dense per group.
 pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.theme = normalize_theme(&cfg.theme);
+    cfg.open_hotkey = cfg.open_hotkey.trim().to_string();
     cfg.notify_enabled = true;
     cfg.pause_when_locked = true;
     if let Some(geo) = cfg.window_geometry.take() {
@@ -198,6 +215,13 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     if !cfg.groups.iter().any(|g| g.id == UNGROUPED_ID) {
         cfg.groups.insert(0, default_ungrouped_group());
+    }
+    for g in &mut cfg.groups {
+        if g.id == UNGROUPED_ID {
+            g.column_span = 1;
+        } else {
+            g.column_span = clamp_column_span(g.column_span);
+        }
     }
     let known: std::collections::HashSet<_> = cfg.groups.iter().map(|g| g.id.clone()).collect();
     for p in &mut cfg.projects {
@@ -284,6 +308,7 @@ pub fn new_group(name: String) -> GroupConfig {
     GroupConfig {
         id: Uuid::new_v4().to_string(),
         name,
+        column_span: 1,
     }
 }
 
@@ -303,10 +328,12 @@ mod tests {
             notify_enabled: true,
             pause_when_locked: true,
             autostart: false,
+            open_hotkey: String::new(),
             theme: "dawn".into(),
             groups: vec![GroupConfig {
                 id: "g1".into(),
                 name: "A".into(),
+                column_span: 1,
             }],
             projects: vec![ProjectConfig {
                 id: "p1".into(),
@@ -411,6 +438,38 @@ mod tests {
         assert!(!n.projects[0].mute_notify);
         assert!(n.pause_when_locked);
         assert_eq!(n.theme, "system");
+    }
+
+    #[test]
+    fn normalize_clamps_column_span_and_forces_ungrouped() {
+        let cfg = AppConfig {
+            groups: vec![
+                GroupConfig {
+                    id: UNGROUPED_ID.into(),
+                    name: "未分组".into(),
+                    column_span: 3,
+                },
+                GroupConfig {
+                    id: "g1".into(),
+                    name: "A".into(),
+                    column_span: 9,
+                },
+            ],
+            projects: vec![],
+            ..AppConfig::default()
+        };
+        let n = normalize(cfg);
+        let ungrouped = n.groups.iter().find(|g| g.id == UNGROUPED_ID).unwrap();
+        let g1 = n.groups.iter().find(|g| g.id == "g1").unwrap();
+        assert_eq!(ungrouped.column_span, 1);
+        assert_eq!(g1.column_span, 3);
+    }
+
+    #[test]
+    fn deserialize_legacy_group_without_column_span() {
+        let raw = r#"{"poll_interval_secs":30,"notify_enabled":true,"groups":[{"id":"g1","name":"A"}],"projects":[]}"#;
+        let cfg: AppConfig = serde_json::from_str(raw).unwrap();
+        assert_eq!(cfg.groups[0].column_span, 1);
     }
 
     #[test]

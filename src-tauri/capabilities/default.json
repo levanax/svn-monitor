@@ -15,6 +15,7 @@
     "core:tray:default",
     "autostart:default",
     "dialog:default",
+    "global-shortcut:default",
     "notification:default",
     "opener:default"
   ]
