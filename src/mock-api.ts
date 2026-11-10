@@ -30,6 +30,8 @@ export function createMockApi() {
       group_id: "g-mobile",
       mute_notify: false,
       sort_order: 0,
+      alias: "",
+      description: "",
       local_rev: 18490,
       remote_rev: 18497,
       status: "behind",
@@ -44,6 +46,8 @@ export function createMockApi() {
       group_id: "g-mobile",
       mute_notify: false,
       sort_order: 1,
+      alias: "",
+      description: "",
       local_rev: 100,
       remote_rev: 100,
       status: "up_to_date",
@@ -58,6 +62,8 @@ export function createMockApi() {
       group_id: UNGROUPED,
       mute_notify: false,
       sort_order: 0,
+      alias: "",
+      description: "",
       local_rev: 220,
       remote_rev: 220,
       status: "up_to_date",
@@ -74,6 +80,8 @@ export function createMockApi() {
       group_id: p.group_id,
       mute_notify: p.mute_notify,
       sort_order: p.sort_order,
+      alias: p.alias,
+      description: p.description,
     }));
   };
   syncCfgProjects();
@@ -154,6 +162,17 @@ export function createMockApi() {
           syncCfgProjects();
           return found as T;
         }
+        case "set_project_meta": {
+          const id = String(args?.id ?? "");
+          const alias = String(args?.alias ?? "").trim();
+          const description = String(args?.description ?? "").trim();
+          const found = projects.find((p) => p.id === id);
+          if (!found) throw new Error("project not found");
+          found.alias = alias;
+          found.description = description;
+          syncCfgProjects();
+          return found as T;
+        }
         case "reorder_projects": {
           const groupId = String(args?.groupId ?? "");
           const orderedIds = (args?.orderedIds as string[]) ?? [];
@@ -197,6 +216,8 @@ export function createMockApi() {
             group_id: groupId,
             mute_notify: false,
             sort_order: max + 1,
+            alias: "",
+            description: "",
             local_rev: 1,
             remote_rev: 1,
             status: "up_to_date",

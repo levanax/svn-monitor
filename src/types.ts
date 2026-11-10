@@ -16,6 +16,10 @@ export interface ProjectState {
   group_id: string;
   mute_notify: boolean;
   sort_order: number;
+  /** 备注名；非空时界面优先显示 */
+  alias: string;
+  /** 项目描述（可选） */
+  description: string;
   local_rev: number | null;
   remote_rev: number | null;
   status: ProjectStatus;
@@ -59,6 +63,8 @@ export interface AppConfig {
     group_id: string;
     mute_notify?: boolean;
     sort_order?: number;
+    alias?: string;
+    description?: string;
   }[];
   window_geometry?: WindowGeometry | null;
 }

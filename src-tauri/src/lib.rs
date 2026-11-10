@@ -43,6 +43,10 @@ pub struct ProjectState {
     pub group_id: String,
     pub mute_notify: bool,
     pub sort_order: u32,
+    /// 备注名；非空时界面与通知优先显示
+    pub alias: String,
+    /// 项目描述（可选）
+    pub description: String,
     pub local_rev: Option<u64>,
     pub remote_rev: Option<u64>,
     pub status: ProjectStatus,
@@ -90,12 +94,18 @@ impl ProjectState {
             group_id: p.group_id.clone(),
             mute_notify: p.mute_notify,
             sort_order: p.sort_order,
+            alias: p.alias.clone(),
+            description: p.description.clone(),
             local_rev: None,
             remote_rev: None,
             status: ProjectStatus::Unknown,
             error: None,
             last_checked: None,
         }
+    }
+
+    fn display_name(&self) -> String {
+        config::display_name(&self.name, &self.alias)
     }
 }
 
@@ -227,7 +237,8 @@ fn check_one(app: &AppHandle, state: &AppState, id: &str) -> Result<ProjectState
         let snapshot = proj.clone();
         drop(guard);
         emit_project(app, &snapshot);
-        (snapshot.path, snapshot.name)
+        let label = snapshot.display_name();
+        (snapshot.path, label)
     };
 
     let result = svn::query_revisions(PathBuf::from(&path).as_path());
@@ -563,6 +574,47 @@ fn set_project_mute(
         // 重新开启提醒后允许再次通知当前远端 revision
         if !mute_notify {
             guard.notified_remote.remove(&id);
+        }
+        guard
+            .projects
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| "project not found".to_string())?
+    };
+    persist(&state)?;
+    emit_project(&app, &out);
+    Ok(out)
+}
+
+#[tauri::command]
+fn set_project_meta(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    alias: String,
+    description: String,
+) -> Result<ProjectState, String> {
+    let alias = alias.trim().to_string();
+    let description = description.trim().to_string();
+    let out = {
+        let mut guard = state.inner.lock();
+        {
+            let cfg = guard
+                .config
+                .projects
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or_else(|| "project not found".to_string())?;
+            cfg.alias = alias.clone();
+            cfg.description = description.clone();
+        }
+        {
+            let proj = guard
+                .projects
+                .get_mut(&id)
+                .ok_or_else(|| "project not found".to_string())?;
+            proj.alias = alias;
+            proj.description = description;
         }
         guard
             .projects
@@ -1163,6 +1215,7 @@ pub fn run() {
             set_group_column_span,
             set_project_group,
             set_project_mute,
+            set_project_meta,
             reorder_projects,
             reorder_groups,
             add_project,

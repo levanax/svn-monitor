@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 pub const UNGROUPED_ID: &str = "ungrouped";
+/// 首次默认配置中的自定义分组（仅种子用，normalize 不强制补回）
+pub const DEFAULT_WORKSPACE_ID: &str = "default-workspace";
+pub const DEFAULT_WORKSPACE_NAME: &str = "工作区";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupConfig {
@@ -27,6 +30,12 @@ pub struct ProjectConfig {
     /// 组内显示顺序（越小越靠前）
     #[serde(default)]
     pub sort_order: u32,
+    /// 备注名；非空时界面与通知优先显示
+    #[serde(default)]
+    pub alias: String,
+    /// 项目描述（可选）
+    #[serde(default)]
+    pub description: String,
 }
 
 fn default_ungrouped_id() -> String {
@@ -172,7 +181,7 @@ impl Default for AppConfig {
             autostart: false,
             open_hotkey: String::new(),
             theme: default_theme(),
-            groups: vec![default_ungrouped_group()],
+            groups: vec![default_ungrouped_group(), default_workspace_group()],
             projects: Vec::new(),
             window_geometry: None,
         }
@@ -193,6 +202,24 @@ pub fn default_ungrouped_group() -> GroupConfig {
         id: UNGROUPED_ID.to_string(),
         name: "未分组".to_string(),
         column_span: 1,
+    }
+}
+
+pub fn default_workspace_group() -> GroupConfig {
+    GroupConfig {
+        id: DEFAULT_WORKSPACE_ID.to_string(),
+        name: DEFAULT_WORKSPACE_NAME.to_string(),
+        column_span: 1,
+    }
+}
+
+/// 备注名优先，否则回退到文件夹名。
+pub fn display_name(name: &str, alias: &str) -> String {
+    let alias = alias.trim();
+    if alias.is_empty() {
+        name.to_string()
+    } else {
+        alias.to_string()
     }
 }
 
@@ -301,6 +328,8 @@ pub fn new_project(
         group_id: group_id.unwrap_or_else(default_ungrouped_id),
         mute_notify: false,
         sort_order,
+        alias: String::new(),
+        description: String::new(),
     }
 }
 
@@ -342,13 +371,41 @@ mod tests {
                 group_id: "missing".into(),
                 mute_notify: false,
                 sort_order: 0,
+                alias: String::new(),
+                description: String::new(),
             }],
             window_geometry: None,
         };
         let n = normalize(cfg);
         assert!(n.groups.iter().any(|g| g.id == UNGROUPED_ID));
+        assert!(!n.groups.iter().any(|g| g.id == DEFAULT_WORKSPACE_ID));
         assert_eq!(n.projects[0].group_id, UNGROUPED_ID);
         assert_eq!(n.projects[0].sort_order, 0);
+    }
+
+    #[test]
+    fn default_config_seeds_workspace_group() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.groups.len(), 2);
+        assert_eq!(cfg.groups[0].id, UNGROUPED_ID);
+        assert_eq!(cfg.groups[1].id, DEFAULT_WORKSPACE_ID);
+        assert_eq!(cfg.groups[1].name, DEFAULT_WORKSPACE_NAME);
+    }
+
+    #[test]
+    fn display_name_prefers_alias() {
+        assert_eq!(display_name("folder", ""), "folder");
+        assert_eq!(display_name("folder", "  "), "folder");
+        assert_eq!(display_name("folder", "备注"), "备注");
+        assert_eq!(display_name("folder", "  备注  "), "备注");
+    }
+
+    #[test]
+    fn deserialize_legacy_without_alias_description() {
+        let raw = r#"{"poll_interval_secs":30,"notify_enabled":true,"projects":[{"id":"1","name":"a","path":"C:\\a"}]}"#;
+        let cfg: AppConfig = serde_json::from_str(raw).unwrap();
+        assert_eq!(cfg.projects[0].alias, "");
+        assert_eq!(cfg.projects[0].description, "");
     }
 
     #[test]

@@ -238,5 +238,33 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await page.locator("#confirm-cancel").click();
   await expect(page.getByRole("heading", { name: "API-Renamed 0" })).toBeVisible();
 
+  // 备注名优先显示 + 描述（tools 此前已移到 Mobile）
+  const toolsCard = page.locator(".card").filter({ has: page.locator(".path", { hasText: String.raw`C:\work\tools` }) });
+  await expect(toolsCard.locator(".name")).toHaveText("tools");
+  await toolsCard.locator(".more-toggle").click();
+  await toolsCard.locator('button[data-act="meta"]').click();
+  await expect(page.locator("#project-meta-dialog")).toBeVisible();
+  await expect(page.locator("#project-meta-title")).toHaveText("备注 / 描述");
+  await page.locator("#project-meta-alias").fill("工具集");
+  await page.locator("#project-meta-description").fill("日常工具仓库");
+  await page.screenshot({ path: path.join(outDir, "ui-project-meta-dialog.png") });
+  await page.locator("#project-meta-ok").click();
+  await expect(page.getByText("已更新备注 工具集")).toBeVisible();
+  const aliasedCard = page.locator(".card").filter({ has: page.locator(".name", { hasText: "工具集" }) });
+  await expect(aliasedCard.locator(".name")).toHaveText("工具集");
+  await expect(aliasedCard.locator(".name")).toHaveAttribute("title", "原名：tools");
+  await expect(aliasedCard.locator(".desc")).toHaveText("日常工具仓库");
+  await page.screenshot({ path: path.join(outDir, "ui-project-alias.png"), fullPage: true });
+
+  await aliasedCard.locator(".more-toggle").click();
+  await aliasedCard.locator('button[data-act="meta"]').click();
+  await page.locator("#project-meta-alias").fill("");
+  await page.locator("#project-meta-description").fill("");
+  await page.locator("#project-meta-ok").click();
+  await expect(page.getByText("已更新备注 tools")).toBeVisible();
+  const toolsAgain = page.locator(".card").filter({ has: page.locator(".path", { hasText: String.raw`C:\work\tools` }) });
+  await expect(toolsAgain.locator(".name")).toHaveText("tools");
+  await expect(toolsAgain.locator(".desc")).toHaveCount(0);
+
   await page.screenshot({ path: path.join(outDir, "ui-after-actions.png"), fullPage: true });
 });

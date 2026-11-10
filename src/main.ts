@@ -129,6 +129,12 @@ function badgeFor(p: ProjectState): { cls: string; text: string } {
   }
 }
 
+/** 备注名优先，否则回退文件夹名。 */
+function displayName(p: ProjectState): string {
+  const alias = (p.alias ?? "").trim();
+  return alias || p.name;
+}
+
 function customGroups(): GroupConfig[] {
   return groups.filter((g) => g.id !== "ungrouped");
 }
@@ -614,6 +620,14 @@ function renderCard(p: ProjectState): HTMLLIElement {
       ? `<button type="button" class="btn warn tiny" data-act="update" title="用 TortoiseSVN 更新">更新</button>`
       : "";
 
+  const label = displayName(p);
+  const alias = (p.alias ?? "").trim();
+  const desc = (p.description ?? "").trim();
+  const nameTitle = alias ? `原名：${p.name}` : p.name;
+  const descLine = desc
+    ? `<p class="desc" title="${escapeAttr(desc)}">${escapeHtml(desc)}</p>`
+    : "";
+
   li.innerHTML = `
     <div class="card-drag" title="拖动调整顺序" role="button" tabindex="0" aria-label="拖动调整顺序">
       <span class="grip" aria-hidden="true"></span>
@@ -621,7 +635,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
     <div class="card-main">
       <div class="card-head">
         <h2>
-          <span class="name">${escapeHtml(p.name)}</span>
+          <span class="name" title="${escapeAttr(nameTitle)}">${escapeHtml(label)}</span>
           <span class="badge ${badge.cls}">${badge.text}</span>
           ${p.mute_notify ? `<span class="badge muted-badge">已忽略提醒</span>` : ""}
         </h2>
@@ -629,6 +643,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
           <button type="button" class="more-toggle" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false" title="更多操作">⋯</button>
           <div class="more-menu" role="menu" hidden>
             <button type="button" class="more-item" role="menuitem" data-act="refresh">检查更新</button>
+            <button type="button" class="more-item" role="menuitem" data-act="meta">备注 / 描述</button>
             <button type="button" class="more-item" role="menuitem" data-act="move">移到分组</button>
             <button type="button" class="more-item" role="menuitem" data-act="mute">${muteLabel}</button>
             <button type="button" class="more-item danger" role="menuitem" data-act="remove">移除监控</button>
@@ -636,6 +651,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
         </div>
       </div>
       ${svnLine}
+      ${descLine}
       <p class="path" title="本地目录">${escapeHtml(p.path)}</p>
       <div class="meta">
         <span>本地 r${local}</span>
@@ -718,6 +734,10 @@ const promptTitle = document.querySelector<HTMLHeadingElement>("#prompt-title")!
 const promptMessage = document.querySelector<HTMLParagraphElement>("#prompt-message")!;
 const promptInput = document.querySelector<HTMLInputElement>("#prompt-input")!;
 const promptOkBtn = document.querySelector<HTMLButtonElement>("#prompt-ok")!;
+const projectMetaDialog = document.querySelector<HTMLDialogElement>("#project-meta-dialog")!;
+const projectMetaAlias = document.querySelector<HTMLInputElement>("#project-meta-alias")!;
+const projectMetaDescription = document.querySelector<HTMLTextAreaElement>("#project-meta-description")!;
+const projectMetaHint = document.querySelector<HTMLParagraphElement>("#project-meta-hint")!;
 
 /** WebView 里 window.confirm 常被推迟到后续才弹出；用应用内 dialog 保证先问再做。 */
 function askConfirm(opts: {
@@ -845,6 +865,35 @@ function askPrompt(opts: {
       fail();
     } catch {
       fail();
+    }
+  });
+}
+
+/** 编辑项目备注名与描述；取消返回 null。 */
+function askProjectMeta(p: ProjectState): Promise<{ alias: string; description: string } | null> {
+  projectMetaHint.textContent = `文件夹名：${p.name}（备注名优先显示，留空则显示文件夹名）`;
+  projectMetaAlias.value = p.alias ?? "";
+  projectMetaDescription.value = p.description ?? "";
+  return new Promise((resolve) => {
+    const onClose = () => {
+      projectMetaDialog.removeEventListener("close", onClose);
+      if (projectMetaDialog.returnValue !== "ok") {
+        resolve(null);
+        return;
+      }
+      resolve({
+        alias: projectMetaAlias.value.trim(),
+        description: projectMetaDescription.value.trim(),
+      });
+    };
+    projectMetaDialog.addEventListener("close", onClose);
+    if (typeof projectMetaDialog.showModal === "function") {
+      projectMetaDialog.showModal();
+      projectMetaAlias.focus();
+      projectMetaAlias.select();
+    } else {
+      projectMetaDialog.removeEventListener("close", onClose);
+      resolve(null);
     }
   });
 }
@@ -1129,49 +1178,60 @@ async function onGroupAction(g: GroupConfig, act: string, anchorRect?: AnchorRec
 }
 
 async function onAction(p: ProjectState, act: string) {
+  const label = displayName(p);
   try {
     if (act === "mute") {
       const next = !p.mute_notify;
       await invoke("set_project_mute", { id: p.id, muteNotify: next });
       await refreshAll();
-      setStatus(next ? `已忽略 ${p.name}` : `已恢复 ${p.name}`);
+      setStatus(next ? `已忽略 ${label}` : `已恢复 ${label}`);
+    } else if (act === "meta") {
+      const meta = await askProjectMeta(p);
+      if (!meta) return;
+      await invoke("set_project_meta", {
+        id: p.id,
+        alias: meta.alias,
+        description: meta.description,
+      });
+      await refreshAll();
+      setStatus(`已更新备注 ${meta.alias || p.name}`);
     } else if (act === "move") {
       const groupId = await pickGroupId(p.group_id);
       if (!groupId || groupId === p.group_id) return;
       await invoke("set_project_group", { id: p.id, groupId });
       await refreshAll();
-      setStatus(`已移动 ${p.name}`);
+      setStatus(`已移动 ${label}`);
     } else if (act === "refresh") {
-      setStatus(`检查 ${p.name}…`);
+      setStatus(`检查 ${label}…`);
       await invoke("check_project", { id: p.id });
       await refreshAll();
-      setStatus(`${p.name} 已检查`);
+      setStatus(`${label} 已检查`);
     } else if (act === "update") {
       // 不再用 window.confirm：WebView 里常被拖到 Tortoise 关闭之后才弹出。
       // 直接打开 TortoiseSVN Update UI，取消/关闭由 Tortoise 对话框处理。
-      setStatus(`Update ${p.name}…`);
+      setStatus(`Update ${label}…`);
       await invoke("update_project", { id: p.id });
       await refreshAll();
-      setStatus(`${p.name} update 完成`);
+      setStatus(`${label} update 完成`);
     } else if (act === "open") {
       await invoke("open_project_folder", { id: p.id });
-      setStatus(useMock ? "演示：已打开文件夹" : `已打开 ${p.name}`);
+      setStatus(useMock ? "演示：已打开文件夹" : `已打开 ${label}`);
     } else if (act === "cursor") {
       await invoke("open_in_cursor", { id: p.id });
-      setStatus(useMock ? "演示：已用 Cursor 打开" : `Cursor 打开 ${p.name}`);
+      setStatus(useMock ? "演示：已用 Cursor 打开" : `Cursor 打开 ${label}`);
     } else if (act === "log") {
       await invoke("open_tortoise_log", { id: p.id });
-      setStatus(useMock ? "演示：log" : `log ${p.name}`);
+      setStatus(useMock ? "演示：log" : `log ${label}`);
     } else if (act === "remove") {
       const ok = await askConfirm({
         title: "移除监控",
-        message: `确定移除监控「${p.name}」？\n只会从列表去掉，不会删除本地文件。`,
+        message: `确定移除监控「${label}」？\n只会从列表去掉，不会删除本地文件。`,
         okText: "移除",
       });
       if (!ok) return;
       await invoke("remove_project", { id: p.id });
       await refreshAll();
-      setStatus(`已移除 ${p.name}`);
+      setStatus(`已移除 ${label}`);
     }
   } catch (e) {
     setStatus(String(e));

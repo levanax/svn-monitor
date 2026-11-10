@@ -134,6 +134,25 @@
       </form>
     </dialog>
 
+    <dialog id="project-meta-dialog" class="group-picker prompt-dialog project-meta-dialog">
+      <form method="dialog" id="project-meta-form">
+        <h3 id="project-meta-title">备注 / 描述</h3>
+        <p id="project-meta-hint" class="group-picker-hint">备注名优先显示；留空则显示文件夹名。</p>
+        <label class="prompt-field">
+          <span id="project-meta-alias-label">备注名</span>
+          <input type="text" id="project-meta-alias" name="alias" autocomplete="off" spellcheck="false" placeholder="可选" />
+        </label>
+        <label class="prompt-field">
+          <span id="project-meta-desc-label">描述</span>
+          <textarea id="project-meta-description" name="description" rows="3" spellcheck="false" placeholder="可选"></textarea>
+        </label>
+        <div class="group-picker-actions">
+          <button type="submit" value="cancel" class="btn ghost" id="project-meta-cancel">取消</button>
+          <button type="submit" value="ok" class="btn primary" id="project-meta-ok">保存</button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
