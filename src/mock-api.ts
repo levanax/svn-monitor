@@ -260,6 +260,30 @@ export function createMockApi() {
         case "open_in_cursor":
         case "open_tortoise_log":
           return undefined as T;
+        case "list_local_changes": {
+          const id = String(args?.id ?? "");
+          const samples: Record<
+            string,
+            { code: string; label: string; kind: string; path: string }[]
+          > = {
+            "demo-1": [{ code: "M", label: "modified", kind: "modified", path: "src/login.ts" }],
+            "demo-3": [
+              { code: "M", label: "modified", kind: "modified", path: "src/app.ts" },
+              { code: "A", label: "added", kind: "added", path: "docs/note.txt" },
+              { code: "M", label: "modified", kind: "modified", path: "src/ui/panel.ts" },
+              { code: "A", label: "added", kind: "added", path: "src/ui/panel.css" },
+              { code: "D", label: "deleted", kind: "deleted", path: "legacy/old.ts" },
+              { code: "?", label: "unversioned", kind: "unversioned", path: "tmp/scratch.txt" },
+              { code: "M", label: "modified", kind: "modified", path: "README.md" },
+              { code: "A", label: "added", kind: "added", path: "docs/guide.md" },
+              { code: "M", label: "modified", kind: "modified", path: "package.json" },
+              { code: "M", label: "modified", kind: "modified", path: "src/styles.css" },
+              { code: "A", label: "added", kind: "added", path: "scripts/check.mjs" },
+              { code: "M", label: "modified", kind: "modified", path: "e2e/ui.spec.ts" },
+            ],
+          };
+          return { items: samples[id] ?? [], truncated: false } as T;
+        }
         case "is_session_locked":
           return false as T;
         case "notify_ui_ready":

@@ -1516,10 +1516,165 @@ html[data-scheme="light"] .svn-path.tag .svn-rel {
   font-size: 0.8125rem;
 }
 
+.card-tools {
+  display: flex;
+  align-items: flex-start;
+  flex: 0 0 auto;
+  gap: 0.05rem;
+}
+
 .more-wrap {
   position: relative;
   flex: 0 0 auto;
   margin: -0.15rem -0.1rem 0 0;
+}
+
+.icon-btn {
+  appearance: none;
+  width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.icon-btn svg {
+  display: block;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  color: var(--text);
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+  border-color: var(--line);
+}
+
+button[data-act="changes"].is-open {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--btn-surface));
+}
+
+.changes-popover {
+  position: fixed;
+  z-index: 60;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 11rem;
+  max-width: min(18rem, calc(100vw - 16px));
+  max-height: min(16rem, calc(100vh - 16px));
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.35rem 0.45rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--glass-edge);
+  background: var(--btn-surface);
+  color: var(--text);
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 var(--glass-shine),
+    0 12px 32px var(--glass-shadow);
+}
+
+.changes-popover[hidden] {
+  display: none !important;
+}
+
+.changes-popover-title {
+  margin: 0;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0.15rem 0.4rem 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#changes-popover-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.changes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.changes-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.22rem 0.35rem;
+  border-radius: 0.3rem;
+}
+
+.changes-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.change-label {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.change-label[data-kind="modified"],
+.change-label[data-kind="prop"] {
+  color: var(--warn-text);
+}
+
+.change-label[data-kind="added"] {
+  color: var(--ok-text);
+}
+
+.change-label[data-kind="deleted"],
+.change-label[data-kind="missing"],
+.change-label[data-kind="conflict"],
+.change-label[data-kind="obstructed"] {
+  color: var(--danger-text);
+}
+
+.change-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+.changes-empty,
+.changes-note {
+  margin: 0;
+  flex: 0 0 auto;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
 }
 
 .more-toggle {

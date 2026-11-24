@@ -885,6 +885,19 @@ fn open_tortoise_log(state: State<'_, AppState>, id: String) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn list_local_changes(state: State<'_, AppState>, id: String) -> Result<svn::LocalChanges, String> {
+    let path = {
+        let guard = state.inner.lock();
+        guard
+            .projects
+            .get(&id)
+            .map(|p| p.path.clone())
+            .ok_or_else(|| "project not found".to_string())?
+    };
+    svn::list_local_changes(PathBuf::from(&path).as_path()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn is_session_locked(state: State<'_, AppState>) -> bool {
     state.inner.lock().session_locked
 }
@@ -1227,6 +1240,7 @@ pub fn run() {
             open_project_folder,
             open_in_cursor,
             open_tortoise_log,
+            list_local_changes,
             is_session_locked,
             notify_ui_ready,
         ])

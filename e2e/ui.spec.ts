@@ -184,12 +184,70 @@ test("分组展示与紧凑操作", async ({ page }) => {
 
   const syncedCard = page.locator('.card:has-text("mobile-branch")');
   const behindCard = page.locator('.card:has-text("mobile-trunk")');
-  await expect(syncedCard.locator('button[data-act="open"]')).toHaveText("文件夹");
+  await expect(syncedCard.locator('button[data-act="open"]')).toHaveText("folder");
   await expect(syncedCard.locator('button[data-act="log"]')).toHaveText("log");
+  await expect(syncedCard.locator('button[data-act="changes"]')).toHaveText("changes");
   await expect(syncedCard.locator('button[data-act="cursor"]')).toHaveText("Cursor");
+  const cardTools = syncedCard.locator(".card-tools");
+  await expect(cardTools.locator("button").nth(0)).toHaveAttribute("aria-label", "检查更新");
+  await expect(cardTools.locator("button").nth(1)).toHaveClass(/more-toggle/);
+  await syncedCard.locator(".more-toggle").click();
+  await expect(syncedCard.locator(".more-menu")).toBeVisible();
+  await expect(syncedCard.locator(".more-menu")).not.toContainText("检查更新");
+  await page.keyboard.press("Escape");
+  await syncedCard.locator('button[data-act="refresh"]').click();
+  await expect(page.getByText("mobile-branch 已检查")).toBeVisible();
+
+  const changesBtn = syncedCard.locator('button[data-act="changes"]');
+  const changesPop = page.locator("#changes-popover");
+  await changesBtn.click();
+  await expect(changesPop).toBeVisible();
+  await expect(changesPop).toContainText("Changes · mobile-branch (12)");
+  await expect(changesPop.locator(".change-path").nth(0)).toHaveText("src/app.ts");
+  await expect(changesPop.locator(".change-label").nth(0)).toHaveText("modified");
+  await expect(changesPop.locator(".change-path").nth(1)).toHaveText("docs/note.txt");
+  const overflow = await changesPop.evaluate((el) => {
+    const body = el.querySelector("#changes-popover-body") as HTMLElement | null;
+    const list = el.querySelector(".changes-list") as HTMLElement | null;
+    if (!body || !list) return { ok: false, reason: "missing" };
+    const within =
+      el.scrollHeight <= el.clientHeight + 1 &&
+      body.scrollHeight <= body.clientHeight + 1 &&
+      list.scrollHeight > list.clientHeight;
+    return {
+      ok: within,
+      popH: el.clientHeight,
+      popScroll: el.scrollHeight,
+      listH: list.clientHeight,
+      listScroll: list.scrollHeight,
+    };
+  });
+  expect(overflow.ok, JSON.stringify(overflow)).toBe(true);
+  const gap = await changesPop.evaluate((el) => {
+    const btn = document.querySelector('button[data-act="changes"].is-open');
+    if (!btn) return 999;
+    const a = btn.getBoundingClientRect();
+    const b = el.getBoundingClientRect();
+    const dx = Math.max(0, Math.max(a.left - b.right, b.left - a.right));
+    const dy = Math.max(0, Math.max(a.top - b.bottom, b.top - a.bottom));
+    return Math.hypot(dx, dy);
+  });
+  expect(gap).toBeLessThan(24);
+  await page.screenshot({ path: path.join(outDir, "ui-local-changes.png") });
+  await page.keyboard.press("Escape");
+  await expect(changesPop).toBeHidden();
+
+  const toolsCardEarly = page.locator(".card").filter({
+    has: page.locator(".path", { hasText: String.raw`C:\work\tools` }),
+  });
+  await toolsCardEarly.locator('button[data-act="changes"]').click();
+  await expect(changesPop).toContainText("No local changes");
+  await page.keyboard.press("Escape");
+  await expect(changesPop).toBeHidden();
+
   await expect(syncedCard.locator(".more-toggle")).toBeVisible();
   await expect(syncedCard.locator('button[data-act="update"]')).toHaveCount(0);
-  await expect(behindCard.locator('button[data-act="update"]')).toHaveText("更新");
+  await expect(behindCard.locator('button[data-act="update"]')).toHaveText("update");
   await expect(syncedCard.locator('button[data-act="move"]')).toBeHidden();
 
   await page.locator('.card:has-text("tools") .more-toggle').click();

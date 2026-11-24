@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -103,6 +104,123 @@ pub fn parse_status_u(status_output: &str) -> (bool, Option<u64>) {
     }
 
     (behind, against)
+}
+
+/// 本地工作副本里的一条未提交更改（`svn status`，不含远端过期标记）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LocalChange {
+    pub code: String,
+    pub label: String,
+    pub kind: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LocalChanges {
+    pub items: Vec<LocalChange>,
+    pub truncated: bool,
+}
+
+const LOCAL_STATUS_CAP: usize = 300;
+
+fn status_column_ok(b: u8) -> bool {
+    matches!(
+        b,
+        b' ' | b'A'
+            | b'C'
+            | b'D'
+            | b'I'
+            | b'M'
+            | b'R'
+            | b'X'
+            | b'?'
+            | b'!'
+            | b'~'
+            | b'L'
+            | b'+'
+            | b'S'
+            | b'K'
+    )
+}
+
+fn is_local_change(text: char, prop: char, tree: char) -> bool {
+    matches!(text, 'M' | 'A' | 'D' | 'R' | 'C' | '!' | '~' | '?')
+        || matches!(prop, 'M' | 'C')
+        || tree == 'C'
+}
+
+fn describe_change(text: char, prop: char, tree: char) -> (String, &'static str, &'static str) {
+    let mut code = String::new();
+    if text != ' ' {
+        code.push(text);
+    }
+    if prop != ' ' {
+        code.push(prop);
+    }
+    if tree == 'C' && !code.contains('C') {
+        code.push('C');
+    }
+    let (label, kind) = if text == 'C' || prop == 'C' || tree == 'C' {
+        ("conflict", "conflict")
+    } else {
+        match text {
+            'M' => ("modified", "modified"),
+            'A' => ("added", "added"),
+            'D' => ("deleted", "deleted"),
+            'R' => ("replaced", "replaced"),
+            '!' => ("missing", "missing"),
+            '~' => ("obstructed", "obstructed"),
+            '?' => ("unversioned", "unversioned"),
+            _ if prop == 'M' => ("prop", "prop"),
+            _ => ("changed", "other"),
+        }
+    };
+    (code, label, kind)
+}
+
+/// 解析不带 `-u` 的 `svn status`。前 7 列是状态，第 8 列空格，之后是相对路径。
+pub fn parse_local_status(status_output: &str) -> LocalChanges {
+    let mut items = Vec::new();
+    let mut truncated = false;
+    for line in status_output.lines() {
+        let bytes = line.as_bytes();
+        if bytes.len() < 9 || bytes[7] != b' ' {
+            continue;
+        }
+        if !bytes[..7].iter().copied().all(status_column_ok) {
+            continue;
+        }
+        let text = bytes[0] as char;
+        let prop = bytes[1] as char;
+        let tree = bytes[6] as char;
+        if !is_local_change(text, prop, tree) {
+            continue;
+        }
+        let path = line[8..].trim();
+        if path.is_empty() {
+            continue;
+        }
+        if items.len() >= LOCAL_STATUS_CAP {
+            truncated = true;
+            break;
+        }
+        let (code, label, kind) = describe_change(text, prop, tree);
+        items.push(LocalChange {
+            code,
+            label: label.to_string(),
+            kind: kind.to_string(),
+            path: path.to_string(),
+        });
+    }
+    LocalChanges { items, truncated }
+}
+
+pub fn list_local_changes(wc: &Path) -> Result<LocalChanges, SvnError> {
+    if !wc.join(".svn").exists() {
+        return Err(SvnError::NotWorkingCopy(wc.display().to_string()));
+    }
+    let out = run_svn(&["status"], wc)?;
+    Ok(parse_local_status(&out))
 }
 
 fn run_svn(args: &[&str], cwd: &Path) -> Result<String, SvnError> {
@@ -465,6 +583,54 @@ Status against revision:     70\n";
         let (behind, against) = parse_status_u(out);
         assert!(!behind);
         assert_eq!(against, Some(65));
+    }
+
+    #[test]
+    fn parse_local_status_keeps_working_copy_changes() {
+        // 前 8 列与 `svn status` 一致：7 个状态位 + 1 个空格
+        let line = |prefix: &str, path: &str| {
+            assert_eq!(prefix.len(), 8, "{prefix:?}");
+            format!("{prefix}{path}\n")
+        };
+        let out = format!(
+            "{}{}{}{}{}--- Changelist 'x':\n{}{}{}Summary of conflicts:\n",
+            line("M       ", "src/main.ts"),
+            line("A       ", "src/new.ts"),
+            line("?       ", "tmp/notes.txt"),
+            line(" M      ", "props.txt"),
+            line("        ", "locked-only.txt"),
+            line("D       ", "gone.txt"),
+            line("C       ", "conflicted.txt"),
+            line("      C ", "tree.txt"),
+        );
+        let parsed = parse_local_status(&out);
+        assert!(!parsed.truncated);
+        let paths: Vec<_> = parsed.items.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "src/main.ts",
+                "src/new.ts",
+                "tmp/notes.txt",
+                "props.txt",
+                "gone.txt",
+                "conflicted.txt",
+                "tree.txt",
+            ]
+        );
+        assert_eq!(parsed.items[0].label, "modified");
+        assert_eq!(parsed.items[0].kind, "modified");
+        assert_eq!(parsed.items[3].label, "prop");
+        assert_eq!(parsed.items[3].code, "M");
+        assert_eq!(parsed.items[5].kind, "conflict");
+        assert_eq!(parsed.items[6].kind, "conflict");
+    }
+
+    #[test]
+    fn parse_local_status_empty() {
+        let parsed = parse_local_status("");
+        assert!(parsed.items.is_empty());
+        assert!(!parsed.truncated);
     }
 
     #[test]

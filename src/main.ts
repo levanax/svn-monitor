@@ -27,6 +27,9 @@ const intervalInput = document.querySelector<HTMLInputElement>("#interval")!;
 const autostartInput = document.querySelector<HTMLInputElement>("#autostart")!;
 const openHotkeyInput = document.querySelector<HTMLInputElement>("#open-hotkey")!;
 const themeSelect = document.querySelector<HTMLSelectElement>("#theme")!;
+const changesPopover = document.querySelector<HTMLDivElement>("#changes-popover")!;
+const changesPopoverTitle = document.querySelector<HTMLParagraphElement>("#changes-popover-title")!;
+const changesPopoverBody = document.querySelector<HTMLDivElement>("#changes-popover-body")!;
 
 const THEMES = [
   "system",
@@ -444,6 +447,7 @@ function render() {
     // 入场动画播完后去掉 class，避免后续刷新重复闪动
     window.setTimeout(() => listEl.classList.remove("board-enter"), 700);
   }
+  markChangesButtons();
 }
 
 /** 指针拖拽（不依赖 HTML5 DnD，以便开启资源管理器文件拖入） */
@@ -617,7 +621,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
 
   const updateBtn =
     p.status === "behind"
-      ? `<button type="button" class="btn warn tiny" data-act="update" title="用 TortoiseSVN 更新">更新</button>`
+      ? `<button type="button" class="btn warn tiny" data-act="update" title="Update with TortoiseSVN">update</button>`
       : "";
 
   const label = displayName(p);
@@ -639,14 +643,23 @@ function renderCard(p: ProjectState): HTMLLIElement {
           <span class="badge ${badge.cls}">${badge.text}</span>
           ${p.mute_notify ? `<span class="badge muted-badge">已忽略提醒</span>` : ""}
         </h2>
-        <div class="more-wrap">
-          <button type="button" class="more-toggle" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false" title="更多操作">⋯</button>
-          <div class="more-menu" role="menu" hidden>
-            <button type="button" class="more-item" role="menuitem" data-act="refresh">检查更新</button>
-            <button type="button" class="more-item" role="menuitem" data-act="meta">备注 / 描述</button>
-            <button type="button" class="more-item" role="menuitem" data-act="move">移到分组</button>
-            <button type="button" class="more-item" role="menuitem" data-act="mute">${muteLabel}</button>
-            <button type="button" class="more-item danger" role="menuitem" data-act="remove">移除监控</button>
+        <div class="card-tools">
+          <button type="button" class="icon-btn" data-act="refresh" aria-label="检查更新" title="检查更新">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M21 3v5h-5"/>
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              <path d="M3 21v-5h5"/>
+            </svg>
+          </button>
+          <div class="more-wrap">
+            <button type="button" class="more-toggle" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false" title="更多操作">⋯</button>
+            <div class="more-menu" role="menu" hidden>
+              <button type="button" class="more-item" role="menuitem" data-act="meta">备注 / 描述</button>
+              <button type="button" class="more-item" role="menuitem" data-act="move">移到分组</button>
+              <button type="button" class="more-item" role="menuitem" data-act="mute">${muteLabel}</button>
+              <button type="button" class="more-item danger" role="menuitem" data-act="remove">移除监控</button>
+            </div>
           </div>
         </div>
       </div>
@@ -661,8 +674,9 @@ function renderCard(p: ProjectState): HTMLLIElement {
       </div>
     </div>
     <div class="card-actions">
-      <button type="button" class="btn ghost tiny" data-act="open" title="在资源管理器中打开">文件夹</button>
+      <button type="button" class="btn ghost tiny" data-act="open" title="Open in Explorer">folder</button>
       <button type="button" class="btn ghost tiny" data-act="log" title="TortoiseSVN log">log</button>
+      <button type="button" class="btn ghost tiny" data-act="changes" title="Local uncommitted changes" aria-haspopup="dialog" aria-expanded="false">changes</button>
       <button type="button" class="btn ghost tiny" data-act="cursor" title="用 Cursor 打开此目录">Cursor</button>
       ${updateBtn}
     </div>
@@ -676,6 +690,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
 
   moreToggle.addEventListener("click", (ev) => {
     ev.stopPropagation();
+    closeChangesPopover();
     const willOpen = moreMenu.hasAttribute("hidden");
     closeAllMoreMenus();
     if (willOpen) {
@@ -688,7 +703,12 @@ function renderCard(p: ProjectState): HTMLLIElement {
   li.querySelectorAll<HTMLButtonElement>("[data-act]").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      if (btn.dataset.act === "changes") {
+        void toggleChangesPopover(btn, p);
+        return;
+      }
       closeAllMoreMenus();
+      closeChangesPopover();
       void onAction(p, btn.dataset.act!);
     });
   });
@@ -716,9 +736,15 @@ function closeAllMoreMenus() {
   });
 }
 
-document.addEventListener("click", () => closeAllMoreMenus());
+document.addEventListener("click", () => {
+  closeAllMoreMenus();
+  closeChangesPopover();
+});
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape") closeAllMoreMenus();
+  if (ev.key === "Escape") {
+    closeAllMoreMenus();
+    closeChangesPopover();
+  }
 });
 
 const groupPicker = document.querySelector<HTMLDialogElement>("#group-picker")!;
@@ -1052,6 +1078,122 @@ function escapeHtml(s: string): string {
 function escapeAttr(s: string): string {
   return escapeHtml(s).replaceAll("'", "&#39;");
 }
+
+type LocalChange = { code: string; label: string; kind: string; path: string };
+type LocalChanges = { items: LocalChange[]; truncated: boolean };
+
+let changesOpenId: string | null = null;
+let changesSeq = 0;
+
+function cssEscape(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(value);
+  return value.replace(/["\\]/g, "\\$&");
+}
+
+function markChangesButtons() {
+  document.querySelectorAll<HTMLButtonElement>('button[data-act="changes"]').forEach((btn) => {
+    const id = btn.closest<HTMLElement>(".card")?.dataset.id ?? "";
+    const open = id !== "" && id === changesOpenId;
+    btn.classList.toggle("is-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+}
+
+function closeChangesPopover() {
+  if (changesOpenId === null && changesPopover.hidden) return;
+  changesOpenId = null;
+  changesSeq += 1;
+  changesPopover.hidden = true;
+  markChangesButtons();
+}
+
+function placeChangesPopover(anchor: HTMLElement) {
+  const margin = 8;
+  const gap = 6;
+  changesPopover.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  const pw = changesPopover.offsetWidth;
+  const ph = changesPopover.offsetHeight;
+  let left = rect.right + gap;
+  let top = rect.top;
+  if (left + pw > window.innerWidth - margin) {
+    const leftSide = rect.left - gap - pw;
+    if (leftSide >= margin) {
+      left = leftSide;
+    } else {
+      left = Math.max(margin, Math.min(rect.left, window.innerWidth - margin - pw));
+      top = rect.bottom + gap;
+    }
+  }
+  if (top + ph > window.innerHeight - margin) {
+    const above = rect.top - gap - ph;
+    top = above >= margin ? above : Math.max(margin, window.innerHeight - margin - ph);
+  }
+  if (top < margin) top = margin;
+  changesPopover.style.left = `${Math.round(left)}px`;
+  changesPopover.style.top = `${Math.round(top)}px`;
+}
+
+function renderChangesBody(result: LocalChanges) {
+  if (result.items.length === 0) {
+    changesPopoverBody.innerHTML = `<p class="changes-empty">No local changes</p>`;
+    return;
+  }
+  const rows = result.items
+    .map(
+      (item) => `<li class="changes-item">
+        <span class="change-label" data-kind="${escapeAttr(item.kind)}">${escapeHtml(item.label)}</span>
+        <span class="change-path" title="${escapeAttr(item.path)}">${escapeHtml(item.path)}</span>
+      </li>`,
+    )
+    .join("");
+  const note = result.truncated
+    ? `<p class="changes-note">Showing first ${result.items.length}</p>`
+    : "";
+  changesPopoverBody.innerHTML = `<ul class="changes-list">${rows}</ul>${note}`;
+}
+
+async function toggleChangesPopover(btn: HTMLButtonElement, p: ProjectState) {
+  closeAllMoreMenus();
+  if (changesOpenId === p.id) {
+    closeChangesPopover();
+    return;
+  }
+  const seq = ++changesSeq;
+  changesOpenId = p.id;
+  markChangesButtons();
+  const name = displayName(p);
+  changesPopoverTitle.textContent = `Changes · ${name}`;
+  changesPopoverBody.innerHTML = `<p class="changes-empty">Loading…</p>`;
+  placeChangesPopover(btn);
+  try {
+    const result = await invoke<LocalChanges>("list_local_changes", { id: p.id });
+    if (seq !== changesSeq || changesOpenId !== p.id) return;
+    const count = result.truncated ? `${result.items.length}+` : String(result.items.length);
+    changesPopoverTitle.textContent = `Changes · ${name} (${count})`;
+    renderChangesBody(result);
+    const anchor =
+      document.querySelector<HTMLButtonElement>(
+        `.card[data-id="${cssEscape(p.id)}"] button[data-act="changes"]`,
+      ) ?? btn;
+    placeChangesPopover(anchor);
+  } catch (e) {
+    if (seq !== changesSeq || changesOpenId !== p.id) return;
+    changesPopoverTitle.textContent = `Changes · ${name}`;
+    changesPopoverBody.innerHTML = `<p class="changes-empty">${escapeHtml(String(e))}</p>`;
+    placeChangesPopover(btn);
+  }
+}
+
+changesPopover.addEventListener("click", (ev) => ev.stopPropagation());
+document.addEventListener(
+  "scroll",
+  (ev) => {
+    if (!(ev.target instanceof Node) || changesPopover.contains(ev.target)) return;
+    closeChangesPopover();
+  },
+  true,
+);
 
 async function ensureNotifyPermission(): Promise<boolean> {
   if (useMock) return false;
