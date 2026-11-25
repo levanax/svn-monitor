@@ -117,18 +117,18 @@ function setStatus(msg: string) {
   statusFadeTimer = setTimeout(apply, 90);
 }
 
-function badgeFor(p: ProjectState): { cls: string; text: string } {
+function badgeFor(p: ProjectState): { cls: string; label: string } {
   switch (p.status) {
     case "behind":
-      return { cls: "behind", text: "有更新" };
+      return { cls: "behind", label: "Updates available" };
     case "up_to_date":
-      return { cls: "ok", text: "已同步" };
+      return { cls: "ok", label: "Synced" };
     case "checking":
-      return { cls: "checking", text: "检查中" };
+      return { cls: "checking", label: "Checking" };
     case "error":
-      return { cls: "error", text: "错误" };
+      return { cls: "error", label: "Error" };
     default:
-      return { cls: "checking", text: "未检查" };
+      return { cls: "checking", label: "Not checked" };
   }
 }
 
@@ -640,7 +640,7 @@ function renderCard(p: ProjectState): HTMLLIElement {
       <div class="card-head">
         <h2>
           <span class="name" title="${escapeAttr(nameTitle)}">${escapeHtml(label)}</span>
-          <span class="badge ${badge.cls}">${badge.text}</span>
+          <span class="badge ${badge.cls}" title="${escapeAttr(badge.label)}" aria-label="${escapeAttr(badge.label)}"><span class="status-led" aria-hidden="true"></span></span>
           ${p.mute_notify ? `<span class="badge muted-badge">已忽略提醒</span>` : ""}
         </h2>
         <div class="card-tools">
@@ -667,8 +667,8 @@ function renderCard(p: ProjectState): HTMLLIElement {
       ${descLine}
       <p class="path" title="本地目录">${escapeHtml(p.path)}</p>
       <div class="meta">
-        <span>本地 r${local}</span>
-        <span>远端 r${remote}</span>
+        <span>Local r${local}</span>
+        <span>Remote r${remote}</span>
         <span title="上次检查">${escapeHtml(checked)}</span>
         ${p.error ? `<span title="${escapeAttr(p.error)}">${escapeHtml(p.error)}</span>` : ""}
       </div>
@@ -1350,11 +1350,13 @@ async function onAction(p: ProjectState, act: string) {
       setStatus(`${label} 已检查`);
     } else if (act === "update") {
       // 不再用 window.confirm：WebView 里常被拖到 Tortoise 关闭之后才弹出。
-      // 直接打开 TortoiseSVN Update UI，取消/关闭由 Tortoise 对话框处理。
+      // Tortoise Update 异步打开（不等待确认），关闭后后端会再 check 并 emit。
       setStatus(`Update ${label}…`);
       await invoke("update_project", { id: p.id });
       await refreshAll();
-      setStatus(`${label} update 完成`);
+      setStatus(
+        useMock ? `${label} update 完成` : `${label}：已打开 Tortoise Update（关闭后自动刷新）`,
+      );
     } else if (act === "open") {
       await invoke("open_project_folder", { id: p.id });
       setStatus(useMock ? "演示：已打开文件夹" : `已打开 ${label}`);

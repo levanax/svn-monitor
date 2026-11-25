@@ -161,7 +161,7 @@ fn should_notify_for_remote(
 /// 返回是否成功发出系统通知。失败时不记「已通知」，以便下次轮询重试。
 fn show_update_notification(app: &AppHandle, name: &str, local: u64, remote: u64, log_summary: &str) -> bool {
     let title = "SVN 有更新";
-    let headline = format!("{name}：本地 r{local} → 远端 r{remote}");
+    let headline = format!("{name}: Local r{local} → Remote r{remote}");
     let first_log = log_summary.lines().next().unwrap_or("").trim();
     let body = if first_log.is_empty() {
         headline.clone()
@@ -781,15 +781,42 @@ fn update_project(
     // 优先打开 TortoiseSVN Update UI；未安装时回退到 svn update
     let wc = PathBuf::from(&path);
     if svn::find_tortoise_proc().is_some() {
-        svn::open_tortoise_update(wc.as_path()).map_err(|e| e.to_string())?;
+        // 不等待 Tortoise 对话框：同步 wait 时点回主界面易卡死
+        let mut child = svn::spawn_tortoise_update(wc.as_path()).map_err(|e| e.to_string())?;
+        let app_bg = app.clone();
+        let state_bg = (*state).clone();
+        let id_bg = id.clone();
+        thread::spawn(move || {
+            match child.wait() {
+                Ok(status) if !status.success() => {
+                    let code = status.code().unwrap_or(-1);
+                    eprintln!("TortoiseSVN update exited with code {code}");
+                }
+                Err(e) => eprintln!("wait TortoiseSVN update failed: {e}"),
+                _ => {}
+            }
+            {
+                let mut guard = state_bg.inner.lock();
+                guard.notified_remote.remove(&id_bg);
+            }
+            if let Err(e) = check_one(&app_bg, &state_bg, &id_bg) {
+                eprintln!("post-update check failed for {id_bg}: {e}");
+            }
+        });
+        let guard = state.inner.lock();
+        guard
+            .projects
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| "project not found".to_string())
     } else {
         svn::update(wc.as_path()).map_err(|e| e.to_string())?;
+        {
+            let mut guard = state.inner.lock();
+            guard.notified_remote.remove(&id);
+        }
+        check_one(&app, &state, &id)
     }
-    {
-        let mut guard = state.inner.lock();
-        guard.notified_remote.remove(&id);
-    }
-    check_one(&app, &state, &id)
 }
 
 #[tauri::command]

@@ -36,7 +36,7 @@ test("分组展示与紧凑操作", async ({ page }) => {
     "branches/release-2.1",
   );
   await expect(page.locator(".card:has-text('mobile-branch') .svn-path.branch")).toBeVisible();
-  await expect(page.getByText("有更新").first()).toBeVisible();
+  await expect(page.locator(".card:has-text('mobile-trunk') .badge.behind")).toBeVisible();
   await expect(page.locator("#notify-enabled")).toHaveCount(0);
   await expect(page.locator("#pause-locked")).toHaveCount(0);
   await expect(page.locator("#autostart")).toBeVisible();
@@ -260,6 +260,7 @@ test("分组展示与紧凑操作", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /未分组/ })).toHaveCount(0);
 
   await behindCard.locator('button[data-act="update"]').click();
+  // mock 路径仍同步完成；真实环境为「已打开 Tortoise Update…」
   await expect(page.getByText("update 完成")).toBeVisible({ timeout: 5000 });
 
   await behindCard.locator('button[data-act="cursor"]').click();

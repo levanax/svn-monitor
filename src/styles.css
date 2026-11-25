@@ -1221,6 +1221,7 @@ html[data-scheme="dark"] .group-select option {
 
 @media (prefers-reduced-motion: reduce) {
   .card.behind,
+  .badge.behind .status-led,
   .board-enter .group-block,
   .board-enter .card {
     animation: none;
@@ -1257,6 +1258,13 @@ html[data-scheme="dark"] .group-select option {
 }
 
 .badge.muted-badge {
+  width: auto;
+  height: auto;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
   color: var(--muted);
   background: color-mix(in srgb, var(--glass) 55%, transparent);
   border-color: var(--glass-edge);
@@ -1465,39 +1473,84 @@ html[data-scheme="light"] .svn-path.tag .svn-rel {
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 0 0.4rem;
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 400;
+  justify-content: center;
+  width: 0.9rem;
+  height: 0.9rem;
+  padding: 0;
+  border-radius: 50%;
   border: 1px solid transparent;
-  line-height: 1.4;
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+
+.badge .status-led {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, #fff 70%, currentColor) 0%,
+    currentColor 55%,
+    color-mix(in srgb, currentColor 70%, #000) 100%
+  );
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, currentColor 18%, transparent),
+    0 0 0.45rem color-mix(in srgb, currentColor 45%, transparent);
 }
 
 .badge.ok {
-  color: var(--ok-text);
-  background: color-mix(in srgb, var(--ok) 16%, transparent);
-  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 30%, transparent);
+}
+
+.badge.ok .status-led {
+  color: var(--ok);
 }
 
 .badge.behind {
-  color: var(--behind-text);
-  background: color-mix(in srgb, var(--behind) 28%, transparent);
-  border-color: color-mix(in srgb, var(--behind) 65%, transparent);
-  font-size: 0.875rem;
-  padding: 0.1rem 0.55rem;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--behind) 30%, transparent);
+  background: color-mix(in srgb, var(--behind) 22%, transparent);
+  border-color: color-mix(in srgb, var(--behind) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--behind) 28%, transparent);
+}
+
+.badge.behind .status-led {
+  color: var(--behind);
+  animation: status-led-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes status-led-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1.5px color-mix(in srgb, var(--behind) 22%, transparent),
+      0 0 0.4rem color-mix(in srgb, var(--behind) 40%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--behind) 40%, transparent),
+      0 0 0.7rem color-mix(in srgb, var(--behind) 70%, transparent);
+  }
 }
 
 .badge.error {
-  color: var(--error-text);
-  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
   border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
+.badge.error .status-led {
+  color: var(--danger);
+}
+
 .badge.checking {
-  color: var(--muted);
   background: color-mix(in srgb, var(--glass) 55%, transparent);
   border-color: var(--glass-edge);
+}
+
+.badge.checking .status-led {
+  color: var(--muted);
+  opacity: 0.75;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--muted) 25%, transparent);
 }
 
 .card-actions {
@@ -1570,8 +1623,8 @@ button[data-act="changes"].is-open {
   box-sizing: border-box;
   width: max-content;
   min-width: 11rem;
-  max-width: min(18rem, calc(100vw - 16px));
-  max-height: min(16rem, calc(100vh - 16px));
+  max-width: min(40rem, calc(100vw - 16px));
+  max-height: min(20rem, calc(100vh - 16px));
   display: flex;
   flex-direction: column;
   padding: 0.4rem 0.35rem 0.45rem;
@@ -1616,7 +1669,7 @@ button[data-act="changes"].is-open {
   padding: 0;
   flex: 1 1 auto;
   min-height: 0;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1661,11 +1714,14 @@ button[data-act="changes"].is-open {
 }
 
 .change-path {
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
   font-size: 0.8125rem;
+  line-height: 1.35;
 }
 
 .changes-empty,

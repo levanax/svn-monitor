@@ -503,22 +503,16 @@ pub fn open_tortoise_show_log(wc: &Path) -> Result<(), SvnError> {
     Ok(())
 }
 
-/// 调用 TortoiseSVN Update UI，并等待用户关闭对话框后再返回。
-pub fn open_tortoise_update(wc: &Path) -> Result<(), SvnError> {
+/// 启动 TortoiseSVN Update UI（不等待关闭）。
+///
+/// 同步 `status()` 会占住 Tauri command：用户未在 Tortoise 点确认就点回主界面时，
+/// 主窗口容易表现为卡死。与 Show Log 一样用 spawn，由调用方在后台 `wait` 后再刷新。
+pub fn spawn_tortoise_update(wc: &Path) -> Result<std::process::Child, SvnError> {
     // /closeonend:0 不自动关；用户关窗后进程结束，便于随后重新检查状态
     let mut cmd = tortoise_command("update", wc)?;
     cmd.arg("/closeonend:0");
-    let status = cmd
-        .status()
-        .map_err(|e| SvnError::Command(format!("启动 TortoiseSVN Update 失败: {e}")))?;
-    if !status.success() {
-        // 用户取消也可能非 0，不视为硬错误；仍返回 Ok 以便刷新状态
-        let code = status.code().unwrap_or(-1);
-        if code != 0 {
-            eprintln!("TortoiseSVN update exited with code {code}");
-        }
-    }
-    Ok(())
+    cmd.spawn()
+        .map_err(|e| SvnError::Command(format!("启动 TortoiseSVN Update 失败: {e}")))
 }
 
 #[cfg(test)]
